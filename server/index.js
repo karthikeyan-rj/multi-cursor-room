@@ -49,6 +49,10 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
+app.get('/', (req, res) => {
+  res.json({ success: true, message: "Multiplayer Cursor Room Backend is running!", status: "healthy" });
+});
+
 const server = http.createServer(app);
 
 const io = new Server(server, {
