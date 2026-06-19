@@ -1,110 +1,147 @@
+````markdown
 # Multiplayer Cursor Room
 
-A real-time multiplayer collaborative workspace where users can draw on a shared canvas, place sticky notes, and chat — all with live cursor tracking.
+A real-time collaborative workspace where users can create or join rooms and collaborate through live cursor tracking, a shared drawing canvas, sticky notes, room-based chat, and emoji reactions. The application uses Socket.IO for real-time communication and MongoDB Atlas for persistent data storage.
+
+## Live Demo
+
+**Frontend:** https://multi-cursor-room.vercel.app
+
+**Backend:** https://multi-cursor-room.onrender.com
 
 ## Features
 
-- 🖱️ **Live Cursors** — See every connected user's cursor in real time
-- 🎨 **Shared Canvas** — Draw collaboratively with brush color and size controls
-- 🗒️ **Sticky Notes** — Add, drag, edit, and delete sticky notes synced for all users
-- 💬 **Chat** — Room-scoped live chat with message history
-- 🎭 **Emoji Reactions** — Floating emoji reactions visible to everyone
-- 🔐 **Auth** — JWT-based sign-up / login with persistent color profiles
-- 🏠 **Rooms** — Create and join multiple named collaboration rooms
-- ☁️ **MongoDB Atlas** — Persistent storage via MongoDB Atlas free tier
+- User registration and login with JWT authentication
+- Create and join collaboration rooms
+- Real-time cursor tracking
+- Shared drawing canvas
+- Sticky notes with live synchronization
+- Room-based chat
+- Emoji reactions
+- Persistent storage using MongoDB Atlas
 
 ## Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend | React + Vite |
-| Backend | Node.js + Express |
-| Real-time | Socket.io |
-| Database | MongoDB Atlas |
-| Auth | JWT (jsonwebtoken) |
+### Frontend
+
+- React
+- Vite
+- Socket.IO Client
+- HTML5 Canvas
+- CSS
+
+### Backend
+
+- Node.js
+- Express
+- Socket.IO
+- MongoDB Atlas
+- JSON Web Token (JWT)
 
 ## Project Structure
 
+```text
+multiplayer-cursor-room
+├── client
+│   ├── src
+│   ├── public
+│   ├── package.json
+│   └── .env.example
+│
+├── server
+│   ├── index.js
+│   ├── db.js
+│   ├── package.json
+│   └── .env.example
+│
+├── .gitignore
+└── README.md
 ```
-multiplayer-cursor-room/
-├── client/          # React frontend (Vite)
-│   ├── src/
-│   │   ├── App.jsx  # Main app component
-│   │   └── index.css
-│   └── .env         # VITE_SERVER_URL (create from .env.example)
-└── server/          # Node.js backend
-    ├── index.js     # Express + Socket.io server
-    ├── db.js        # MongoDB data layer
-    └── .env         # MONGODB_URI, JWT_SECRET, etc. (create from .env.example)
-```
 
-## Local Development Setup
+## Getting Started
 
-### Prerequisites
-- Node.js 18+
-- A [MongoDB Atlas](https://www.mongodb.com/atlas) free-tier cluster (or local MongoDB)
-
-### 1. Clone the repo
+### Clone the repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/multiplayer-cursor-room.git
-cd multiplayer-cursor-room
+git clone https://github.com/karthikeyan-rj/multi-cursor-room.git
+cd multi-cursor-room
 ```
 
-### 2. Set up the server
+### Backend Setup
 
 ```bash
 cd server
 npm install
-cp .env.example .env
-# Edit .env and set your MONGODB_URI and JWT_SECRET
 ```
 
-### 3. Set up the client
+Create a `.env` file inside the `server` directory.
+
+```env
+MONGODB_URI=<your_mongodb_connection_string>
+JWT_SECRET=<your_jwt_secret>
+CLIENT_URL=http://localhost:5173
+```
+
+Start the backend.
+
+```bash
+npm start
+```
+
+### Frontend Setup
 
 ```bash
 cd ../client
 npm install
-cp .env.example .env
-# Edit .env — set VITE_SERVER_URL=http://localhost:3001 for local dev
 ```
 
-### 4. Run locally
+Create a `.env` file inside the `client` directory.
 
-Open two terminals:
+```env
+VITE_SERVER_URL=http://localhost:5000
+```
+
+Start the frontend.
 
 ```bash
-# Terminal 1 — Backend
-cd server && node index.js
-
-# Terminal 2 — Frontend
-cd client && npm run dev
+npm run dev
 ```
 
-Visit `http://localhost:5173`
+The application will be available at:
+
+```
+http://localhost:5173
+```
 
 ## Deployment
 
-### Backend (Render / Railway / Fly.io)
+### Frontend (Vercel)
 
-Set these environment variables on your hosting platform:
+Set the following environment variable:
 
-| Variable | Description |
-|---|---|
-| `PORT` | Port to listen on (usually set automatically) |
-| `MONGODB_URI` | Your MongoDB Atlas connection string |
-| `JWT_SECRET` | A strong random secret string |
-| `ALLOWED_ORIGINS` | Comma-separated list of your frontend URL(s) |
+```env
+VITE_SERVER_URL=https://multi-cursor-room.onrender.com
+```
 
-**Start command:** `node index.js`
+### Backend (Render)
 
-### Frontend (Vercel / Netlify)
+Set the following environment variables:
 
-Set this environment variable at build time:
+```env
+MONGODB_URI=<your_mongodb_connection_string>
+JWT_SECRET=<your_jwt_secret>
+CLIENT_URL=https://multi-cursor-room.vercel.app
+```
 
-| Variable | Description |
-|---|---|
-| `VITE_SERVER_URL` | Full URL of your deployed backend |
+## Notes
 
-**Build command:** `npm run build`  
-**Publish directory:** `dist`
+- MongoDB Atlas is used for persistent data storage.
+- Socket.IO powers all real-time features including cursor tracking, chat, drawing, sticky notes, and emoji reactions.
+- The free Render instance may take a short time to wake up after inactivity.
+
+## Author
+
+**Karthikeyan**
+
+GitHub: https://github.com/karthikeyan-rj
+````
