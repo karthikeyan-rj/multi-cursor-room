@@ -7,7 +7,7 @@ const jwt = require('jsonwebtoken');
 const db = require('./db');
 
 const app = express();
-const port = process.env.PORT || 3001;
+const PORT = process.env.PORT || 5000;
 
 const JWT_SECRET = process.env.JWT_SECRET || 'cursor_room_super_secret_key_123';
 
@@ -408,8 +408,8 @@ io.on('connection', (socket) => {
 // Connect to MongoDB then start server
 db.initDb()
   .then(() => {
-    server.listen(port, () => {
-      console.log(`🚀 Multiplayer Cursor Room backend running on http://localhost:${port}`);
+    server.listen(PORT, () => {
+      console.log(`Server running on ${PORT}`);
     });
   })
   .catch((err) => {
