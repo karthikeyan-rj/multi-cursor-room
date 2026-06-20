@@ -8,7 +8,7 @@ function generateStrokeId() {
 }
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
-const socket = io(SERVER_URL);
+export const socket = io(SERVER_URL);
 
 export function useRoomSession({ username, cursorColor, activeTool, brushColor, brushWidth, chatOpen, setActiveTool }) {
   const [currentRoomId, setCurrentRoomId] = useState(null);

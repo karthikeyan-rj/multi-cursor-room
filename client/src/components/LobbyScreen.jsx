@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { COLORS } from '../constants';
 import { showToast } from '../utils/toast';
+import Starfield from './Starfield';
 
 export default function LobbyScreen({
   username, cursorColor, rooms,
@@ -50,18 +51,19 @@ export default function LobbyScreen({
   };
 
   return (
-    <div className="lobby-container">
-      <div className="lobby-hero">
-        <div className="lobby-wordmark">
-          <div className="lobby-wordmark-dot" />
-          <span className="lobby-wordmark-text">Live • Real-time</span>
+    <>
+      <div className="lobby-container">
+        <div className="lobby-hero">
+          <div className="lobby-wordmark">
+            <div className="lobby-wordmark-dot" />
+            <span className="lobby-wordmark-text">Live • Real-time</span>
+          </div>
+          <h1 className="lobby-title">Multiple Cursor Room</h1>
+          <p className="lobby-subtitle">A shared canvas where your team draws, chats, and thinks together — live.</p>
         </div>
-        <h1 className="lobby-title">Multiple Cursor Room</h1>
-        <p className="lobby-subtitle">A shared canvas where your team draws, chats, and thinks together — live.</p>
-      </div>
 
       <div className="lobby-setup-panel">
-        <div className="panel-card glass">
+        <div className="panel-card glass card-glow" style={{ '--user-color': cursorColor, '--shine-delay': '0s' }}>
           <h2 className="card-title" style={{ justifyContent: 'space-between' }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -102,7 +104,7 @@ export default function LobbyScreen({
           </div>
         </div>
 
-        <div className="panel-card glass" style={{ display: 'flex', flexDirection: 'column' }}>
+        <div className="panel-card glass card-glow" style={{ display: 'flex', flexDirection: 'column', '--user-color': cursorColor, '--shine-delay': '-1.8s' }}>
           <h2 className="card-title">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect width="18" height="18" x="3" y="3" rx="2" />
@@ -120,8 +122,12 @@ export default function LobbyScreen({
                 gridColumn: '1 / -1', textAlign: 'center', color: 'var(--text-muted)',
                 fontSize: '13px', padding: '40px 20px', lineHeight: '1.6'
               }}>
-                <div style={{ fontSize: '28px', marginBottom: '8px' }}>🏠</div>
-                No rooms available yet.<br />Create one to get started!
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '10px', opacity: 0.4 }}>
+                  <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                  <polyline points="9 22 9 12 15 12 15 22" />
+                </svg>
+                <div>No rooms available yet.</div>
+                <div style={{ marginTop: '4px' }}>Create one to get started!</div>
               </div>
             )}
             {rooms.map(room => (
@@ -242,22 +248,13 @@ export default function LobbyScreen({
         </div>
       </div>
 
-      <div style={{
-        fontSize: '12px', color: '#a855f7', padding: '7px 16px', borderRadius: '20px',
-        background: 'rgba(168, 85, 247, 0.07)', border: '1px solid rgba(168, 85, 247, 0.18)',
-        display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px'
-      }}>
-        <span style={{
-          width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#22c55e',
-          boxShadow: '0 0 6px #22c55e', display: 'inline-block'
-        }} />
-        MongoDB Atlas connected
-      </div>
-
       {createdRoomDetails && (
         <div className="modal-overlay">
           <div className="panel-card glass modal-content" style={{ width: '100%', maxWidth: '400px', textAlign: 'center' }}>
-            <div style={{ color: '#22c55e', fontSize: '48px', marginBottom: '16px' }}>✓</div>
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ marginBottom: '16px' }}>
+              <circle cx="12" cy="12" r="10" stroke="#22c55e" strokeWidth="2" fill="rgba(34,197,94,0.1)" />
+              <path d="M8 12l3 3 5-5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
             <h3 className="card-title" style={{ justifyContent: 'center', marginBottom: '12px' }}>Room Created Successfully</h3>
             <div style={{ margin: '20px 0', textAlign: 'left', background: 'rgba(255, 255, 255, 0.03)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
               <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-secondary)' }}>Room Name</div>
@@ -268,7 +265,7 @@ export default function LobbyScreen({
                 <button
                   onClick={() => onCopyToClipboard(createdRoomDetails.roomId || '')}
                   style={{
-                    background: 'rgba(168, 85, 247, 0.1)', border: '1px solid rgba(168, 85, 247, 0.3)',
+                    background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)',
                     color: 'var(--accent)', padding: '4px 8px', borderRadius: '4px',
                     fontSize: '12px', cursor: 'pointer', fontWeight: '600'
                   }}
@@ -297,9 +294,13 @@ export default function LobbyScreen({
               </span>
               <button
                 onClick={onCancelPrompt}
-                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', fontSize: '16px', cursor: 'pointer' }}
+                style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '4px', borderRadius: '6px', display: 'flex', transition: 'background 0.2s' }}
+                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.06)'}
+                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
               >
-                ✕
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
               </button>
             </h3>
             <p style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '20px' }}>
@@ -334,5 +335,7 @@ export default function LobbyScreen({
         </div>
       )}
     </div>
+      <Starfield />
+    </>
   );
 }

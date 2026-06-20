@@ -89,16 +89,31 @@ async function getRooms(username) {
       doc.roomId = await generateUniqueRoomId();
       await db.collection('rooms').updateOne({ _id: doc._id }, { $set: { roomId: doc.roomId } });
     }
+    if (!doc.id) {
+      doc.id = doc._id;
+      await db.collection('rooms').updateOne({ _id: doc._id }, { $set: { id: doc._id } });
+    }
   }
 
   return docs.map(mapDoc);
 }
 
 async function getRoomById(id) {
-  const doc = await db.collection('rooms').findOne({ _id: id });
-  if (doc && !doc.roomId) {
-    doc.roomId = await generateUniqueRoomId();
-    await db.collection('rooms').updateOne({ _id: id }, { $set: { roomId: doc.roomId } });
+  const doc = await db.collection('rooms').findOne({
+    $or: [
+      { _id: id },
+      { id: id }
+    ]
+  });
+  if (doc) {
+    if (!doc.roomId) {
+      doc.roomId = await generateUniqueRoomId();
+      await db.collection('rooms').updateOne({ _id: doc._id }, { $set: { roomId: doc.roomId } });
+    }
+    if (!doc.id) {
+      doc.id = doc._id;
+      await db.collection('rooms').updateOne({ _id: doc._id }, { $set: { id: doc._id } });
+    }
   }
   return mapDoc(doc);
 }
@@ -163,10 +178,19 @@ async function createRoom(id, roomName, passwordHash, createdBy) {
 }
 
 async function deleteRoom(id) {
-  await db.collection('rooms').deleteOne({ _id: id });
-  await db.collection('drawings').deleteMany({ room_id: id });
-  await db.collection('sticky_notes').deleteMany({ room_id: id });
-  await db.collection('chat_messages').deleteMany({ room_id: id });
+  // Find room by _id or id field, then use its stored id for cascade delete
+  const room = await db.collection('rooms').findOne({
+    $or: [
+      { _id: id },
+      { id: id }
+    ]
+  });
+  if (!room) return false;
+  const roomSlug = room.id || id;
+  await db.collection('rooms').deleteOne({ _id: room._id });
+  await db.collection('drawings').deleteMany({ room_id: roomSlug });
+  await db.collection('sticky_notes').deleteMany({ room_id: roomSlug });
+  await db.collection('chat_messages').deleteMany({ room_id: roomSlug });
   return true;
 }
 

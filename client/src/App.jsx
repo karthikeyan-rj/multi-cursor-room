@@ -8,6 +8,7 @@ import { ToastProvider } from './components/Toast';
 import AuthScreen from './components/AuthScreen';
 import LobbyScreen from './components/LobbyScreen';
 import Workspace from './components/Workspace';
+import Starfield from './components/Starfield';
 
 export default function App() {
   const auth = useAuth();
@@ -89,6 +90,7 @@ export default function App() {
             <p className="lobby-subtitle">Loading your workspace…</p>
           </div>
         </div>
+        <Starfield />
       </ToastProvider>
     );
   }

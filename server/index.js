@@ -65,7 +65,7 @@ const corsOptions = {
 
     return callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST'],
+  methods: ['GET', 'POST', 'DELETE'],
   credentials: true
 };
 app.use(cors(corsOptions));
@@ -302,11 +302,8 @@ app.delete('/api/rooms/:slug', authenticateToken, async (req, res) => {
       return res.status(403).json({ success: false, error: 'Only the room owner can delete this room.' });
     }
     await db.deleteRoom(req.params.slug);
-    // Notify any active sockets in this room
-    const roomSockets = io.sockets.adapter.rooms.get(req.params.slug);
-    if (roomSockets) {
-      io.to(req.params.slug).emit('room_deleted');
-    }
+    io.to(req.params.slug).emit('room_deleted');
+    io.emit('room_removed', { roomId: req.params.slug });
     res.json({ success: true, message: 'Room deleted successfully.' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -547,6 +544,7 @@ io.on('connection', (socket) => {
         return;
       }
       io.to(currentRoomId).emit('room_deleted');
+      io.emit('room_removed', { roomId: currentRoomId });
       await db.deleteRoom(currentRoomId);
       console.log(`🗑️ Room "${currentRoomId}" deleted by creator "${username}"`);
     } catch (err) {

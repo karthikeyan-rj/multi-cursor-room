@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { showToast } from '../utils/toast';
+import { socket } from './useRoomSession';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
 
@@ -30,6 +31,14 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
     const interval = setInterval(load, 5000);
     return () => { active = false; clearInterval(interval); };
   }, [currentRoomId, currentUser]);
+
+  useEffect(() => {
+    const handler = ({ roomId }) => {
+      if (roomId) setRooms(prev => prev.filter(r => r.id !== roomId && r.roomId !== roomId));
+    };
+    socket.on('room_removed', handler);
+    return () => { socket.off('room_removed', handler); };
+  }, []);
 
   const handleCreateRoom = async (name, password) => {
     try {
@@ -105,17 +114,26 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
     setPromptError('');
   };
 
-  const handleDeleteRoom = async (slug) => {
+  const handleDeleteRoom = async (slugOrId) => {
+    if (!slugOrId) {
+      console.error('Delete room called with empty identifier');
+      showToast('Cannot delete: missing room identifier.', 'error');
+      return;
+    }
     try {
       const token = localStorage.getItem('cursor_room_token');
-      const response = await fetch(`${SERVER_URL}/api/rooms/${slug}`, {
+      if (!token) {
+        showToast('Authentication required.', 'error');
+        return;
+      }
+      const response = await fetch(`${SERVER_URL}/api/rooms/${slugOrId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
       if (data.success) {
         showToast('Room deleted.', 'success');
-        setRooms(prev => prev.filter(r => r.id !== slug));
+        setRooms(prev => prev.filter(r => r.id !== slugOrId && r.roomId !== slugOrId));
       } else {
         showToast(data.error || 'Failed to delete room.', 'error');
       }

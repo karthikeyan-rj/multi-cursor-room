@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { COLORS } from '../constants';
+import Starfield from './Starfield';
 
 export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, onSignup, onColorChange }) {
   const [authTab, setAuthTab] = useState('login');
@@ -17,40 +18,53 @@ export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, 
   };
 
   return (
-    <div className="lobby-container">
-      <div className="lobby-hero">
-        <div className="lobby-wordmark">
-          <div className="lobby-wordmark-dot" />
-          <span className="lobby-wordmark-text">Live • Real-time</span>
+    <>
+      <div className="lobby-container">
+        <div className="lobby-hero">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none" style={{ marginBottom: '20px', filter: 'drop-shadow(0 0 20px rgba(59,130,246,0.3))' }}>
+            <rect x="2" y="2" width="36" height="36" rx="10" stroke="url(#ag)" strokeWidth="2.5" fill="rgba(59,130,246,0.06)" />
+            <path d="M14 20c0-4.4 2.7-8 6-8s6 3.6 6 8-2.7 8-6 8-6-3.6-6-8z" stroke="url(#ag)" strokeWidth="1.5" fill="none" />
+            <path d="M10 28c1.5-3.5 4.5-5.5 8-5.5s6.5 2 8 5.5" stroke="url(#ag)" strokeWidth="1.5" strokeLinecap="round" fill="none" />
+            <circle cx="20" cy="18" r="3" fill="url(#ag)" />
+            <defs>
+              <linearGradient id="ag" x1="0" y1="0" x2="40" y2="40">
+                <stop stopColor="#3b82f6" /><stop offset="1" stopColor="#06b6d4" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <h1 className="lobby-title">Multiple Cursor Room</h1>
+          <p className="lobby-subtitle">Collaborate in real-time — draw, chat, and drop sticky notes with your team.</p>
         </div>
-        <h1 className="lobby-title">Multiple Cursor Room</h1>
-        <p className="lobby-subtitle">Collaborate in real-time — draw, chat, and drop sticky notes with your team.</p>
-      </div>
 
-      <div className="panel-card glass" style={{ width: '100%', maxWidth: '400px', animation: 'fadeInUp 0.6s ease-out' }}>
-        <div className="auth-tabs" style={{ display: 'flex', marginBottom: '24px', borderBottom: '1px solid var(--border-light)' }}>
+        <div className="panel-card glass card-glow" style={{
+          width: '100%', maxWidth: '400px', animation: 'fadeInUp 0.6s ease-out',
+          position: 'relative', zIndex: 1, '--user-color': cursorColor, '--shine-delay': '-0.8s'
+        }}>
+          <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, height: '2px',
+            background: 'linear-gradient(90deg, transparent, #3b82f6, #06b6d4, transparent)'
+          }} />
+          <div className="auth-tabs" style={{ display: 'flex', marginBottom: '28px', gap: '4px', background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '3px' }}>
           <button
-            className="auth-tab-btn"
             onClick={() => { setAuthTab('login'); }}
             style={{
-              flex: 1, padding: '12px', background: 'none', border: 'none',
+              flex: 1, padding: '10px', background: authTab === 'login' ? 'rgba(59,130,246,0.12)' : 'transparent',
+              border: authTab === 'login' ? '1px solid rgba(59,130,246,0.25)' : '1px solid transparent',
               color: authTab === 'login' ? 'var(--accent)' : 'var(--text-secondary)',
-              borderBottom: authTab === 'login' ? '2px solid var(--accent)' : '2px solid transparent',
               cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: '600',
-              fontSize: '16px', transition: 'all 0.2s'
+              fontSize: '14px', transition: 'all 0.2s', borderRadius: '8px'
             }}
           >
             Login
           </button>
           <button
-            className="auth-tab-btn"
             onClick={() => { setAuthTab('signup'); }}
             style={{
-              flex: 1, padding: '12px', background: 'none', border: 'none',
+              flex: 1, padding: '10px', background: authTab === 'signup' ? 'rgba(59,130,246,0.12)' : 'transparent',
+              border: authTab === 'signup' ? '1px solid rgba(59,130,246,0.25)' : '1px solid transparent',
               color: authTab === 'signup' ? 'var(--accent)' : 'var(--text-secondary)',
-              borderBottom: authTab === 'signup' ? '2px solid var(--accent)' : '2px solid transparent',
               cursor: 'pointer', fontFamily: 'var(--font-heading)', fontWeight: '600',
-              fontSize: '16px', transition: 'all 0.2s'
+              fontSize: '14px', transition: 'all 0.2s', borderRadius: '8px'
             }}
           >
             Sign Up
@@ -60,9 +74,9 @@ export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, 
         <form onSubmit={handleSubmit}>
           {authError && (
             <div style={{
-              color: '#ef4444', background: 'rgba(239, 68, 68, 0.08)',
+              color: '#f87171', background: 'rgba(239, 68, 68, 0.1)',
               border: '1px solid rgba(239, 68, 68, 0.2)', padding: '10px 14px',
-              borderRadius: '8px', fontSize: '13px', marginBottom: '16px', textAlign: 'left'
+              borderRadius: '8px', fontSize: '13px', marginBottom: '20px', textAlign: 'left'
             }}>
               {authError}
             </div>
@@ -73,7 +87,7 @@ export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, 
             <input
               type="text" className="text-input" value={authUsername}
               onChange={(e) => setAuthUsername(e.target.value)}
-              placeholder="Enter username" maxLength={20} required
+              placeholder="Enter your username" maxLength={20} required
             />
           </div>
 
@@ -82,7 +96,7 @@ export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, 
             <input
               type="password" className="text-input" value={authPassword}
               onChange={(e) => setAuthPassword(e.target.value)}
-              placeholder="Enter password" required
+              placeholder="Enter your password" required
             />
           </div>
 
@@ -102,11 +116,13 @@ export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, 
             </div>
           )}
 
-          <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: '8px' }} disabled={authBusy}>
-            {authBusy ? 'Please wait…' : (authTab === 'login' ? 'Login' : 'Create Account')}
+          <button type="submit" className="btn-primary" style={{ width: '100%', marginTop: '12px' }} disabled={authBusy}>
+            {authBusy ? 'Please wait\u2026' : (authTab === 'login' ? 'Login' : 'Create Account')}
           </button>
         </form>
       </div>
     </div>
+      <Starfield />
+    </>
   );
 }
