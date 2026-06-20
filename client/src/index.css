@@ -6,9 +6,9 @@
   --bg-panel: rgba(255, 255, 255, 0.03);
   --border-light: rgba(255, 255, 255, 0.1);
   --border-active: rgba(0, 242, 254, 0.45);
-  --text-primary: #f0f4ff;
-  --text-secondary: #a0b4d0;
-  --text-muted: #5a6a80;
+  --text-primary: #f8fafc;
+  --text-secondary: #b8cce0;
+  --text-muted: #8899b0;
   --accent: #00F2FE;
   --accent-glow: rgba(0, 242, 254, 0.2);
   --accent-gradient: linear-gradient(135deg, #00F2FE 0%, #4FACFE 100%);

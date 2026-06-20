@@ -250,23 +250,23 @@ export default function LobbyScreen({
 
       {createdRoomDetails && (
         <div className="modal-overlay">
-          <div className="panel-card glass modal-content" style={{ width: '100%', maxWidth: '400px', textAlign: 'center' }}>
+          <div className="panel-card glass modal-content" style={{ width: '100%', maxWidth: '400px', textAlign: 'center', background: 'rgba(10, 10, 18, 0.94)', borderColor: 'rgba(125, 211, 252, 0.35)', boxShadow: '0 20px 60px rgba(0, 0, 0, 0.45)' }}>
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ marginBottom: '16px' }}>
-              <circle cx="12" cy="12" r="10" stroke="#22c55e" strokeWidth="2" fill="rgba(34,197,94,0.1)" />
+              <circle cx="12" cy="12" r="10" stroke="#22c55e" strokeWidth="2" fill="rgba(34,197,94,0.15)" />
               <path d="M8 12l3 3 5-5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <h3 className="card-title" style={{ justifyContent: 'center', marginBottom: '12px' }}>Room Created Successfully</h3>
-            <div style={{ margin: '20px 0', textAlign: 'left', background: 'rgba(255, 255, 255, 0.03)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border-light)' }}>
-              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-secondary)' }}>Room Name</div>
-              <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', marginTop: '4px', color: 'var(--text-primary)' }}>{createdRoomDetails.name}</div>
-              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-secondary)' }}>Room ID</div>
+            <h3 className="card-title" style={{ justifyContent: 'center', marginBottom: '12px', color: '#f8fafc' }}>Room Created Successfully</h3>
+            <div style={{ margin: '20px 0', textAlign: 'left', background: 'rgba(255, 255, 255, 0.05)', padding: '18px', borderRadius: '10px', border: '1px solid rgba(255, 255, 255, 0.12)' }}>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'rgba(226, 232, 240, 0.85)' }}>Room Name</div>
+              <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '16px', marginTop: '4px', color: '#f8fafc' }}>{createdRoomDetails.name}</div>
+              <div style={{ fontSize: '11px', textTransform: 'uppercase', letterSpacing: '1px', color: 'rgba(226, 232, 240, 0.85)' }}>Room ID</div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px' }}>
-                <span style={{ fontSize: '24px', fontWeight: '800', fontFamily: 'monospace', color: 'var(--accent)', letterSpacing: '2px' }}>{createdRoomDetails.roomId}</span>
+                <span style={{ fontSize: '24px', fontWeight: '800', fontFamily: 'monospace', color: '#7dd3fc', letterSpacing: '2px' }}>{createdRoomDetails.roomId}</span>
                 <button
                   onClick={() => onCopyToClipboard(createdRoomDetails.roomId || '')}
                   style={{
-                    background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)',
-                    color: 'var(--accent)', padding: '4px 8px', borderRadius: '4px',
+                    background: 'rgba(125, 211, 252, 0.12)', border: '1px solid rgba(125, 211, 252, 0.35)',
+                    color: '#7dd3fc', padding: '6px 14px', borderRadius: '6px',
                     fontSize: '12px', cursor: 'pointer', fontWeight: '600'
                   }}
                 >
