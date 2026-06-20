@@ -1,30 +1,29 @@
-````markdown
 # Multiplayer Cursor Room
 
-A full-stack real-time collaborative workspace where users can create or join rooms and work together using live cursors, shared canvas, sticky notes, chat, and room-based collaboration tools.
+Multiplayer Cursor Room is a real-time collaborative workspace where users can create private rooms and work together using live cursors, a shared drawing canvas, sticky notes, and chat. The project focuses on smooth real-time interaction, room-based collaboration, and persistent workspace data.
 
 ## Features
 
-- User authentication with login and registration
-- Create and join collaborative rooms
-- Password-protected rooms
-- Unique room ID for joining rooms
-- Real-time multi-user cursor tracking
-- Shared drawing canvas
-- Sticky notes inside rooms
-- Real-time chat
-- Room deletion with stored room data cleanup
-- Responsive UI with animated glass-style design
-- Persistent data storage using MongoDB Atlas
+* User registration and login
+* Create and join collaboration rooms
+* Password-protected rooms
+* Unique room ID for joining rooms
+* Real-time cursor tracking
+* Shared drawing canvas
+* Sticky notes inside rooms
+* Real-time room chat
+* Room-based access control
+* Persistent data storage
+* Responsive glass-style user interface
 
 ## Tech Stack
 
-**Frontend:** React, Vite, CSS  
-**Backend:** Node.js, Express, Socket.IO  
-**Database:** MongoDB Atlas  
-**Authentication:** JWT  
-**Deployment:** Vercel, Render  
-**Version Control:** Git, GitHub
+**Frontend:** React, Vite, CSS
+**Backend:** Node.js, Express.js, Socket.IO
+**Database:** MongoDB Atlas
+**Authentication:** JSON Web Token
+**Deployment:** Vercel and Render
+**Version Control:** Git and GitHub
 
 ## Project Structure
 
@@ -39,36 +38,36 @@ multi-cursor-room/
 │   ├── db.js
 │   └── package.json
 └── README.md
-````
+```
 
 ## How It Works
 
-Users can register or log in, create a protected room, and invite others using a unique room ID and password. Inside a room, users can collaborate in real time through cursor movement, drawing, sticky notes, and chat. Room data is stored persistently in MongoDB.
+A user can sign up, log in, and create a collaboration room with a password. Each room gets a unique room ID, which can be shared with others. Users can join the room using the room ID and password.
+
+Inside the room, all connected users can see each other's cursors in real time, draw on a shared canvas, add sticky notes, and communicate through chat. Room data is stored in MongoDB so the workspace can be preserved even after users leave.
 
 ## Local Setup
 
-### Clone the repository
+Clone the repository:
 
 ```bash
 git clone https://github.com/karthikeyan-rj/multi-cursor-room.git
 cd multi-cursor-room
 ```
 
-### Install frontend dependencies
+Install frontend dependencies:
 
 ```bash
 cd client
 npm install
 ```
 
-### Install backend dependencies
+Install backend dependencies:
 
 ```bash
 cd ../server
 npm install
 ```
-
-### Configure environment variables
 
 Create a `.env` file inside the `server` folder:
 
@@ -85,14 +84,14 @@ Create a `.env` file inside the `client` folder:
 VITE_API_URL=http://localhost:5000
 ```
 
-### Run the backend
+Run the backend:
 
 ```bash
 cd server
 npm start
 ```
 
-### Run the frontend
+Run the frontend:
 
 ```bash
 cd client
@@ -101,13 +100,8 @@ npm run dev
 
 ## Deployment
 
-* Frontend deployed on Vercel
-* Backend deployed on Render
-* Database hosted on MongoDB Atlas
+The frontend is deployed on Vercel and the backend is deployed on Render. MongoDB Atlas is used as the cloud database.
 
 ## Author
 
 Karthikeyan R J
-
-```
-```
