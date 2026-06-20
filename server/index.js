@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const cors = require('cors');
 const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcrypt');
 const db = require('./db');
 
 const app = express();
@@ -46,22 +47,22 @@ const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
-    
+
     // If no ALLOWED_ORIGINS is specified in env, allow all origins
     if (allowedOrigins.length === 0) {
       return callback(null, true);
     }
-    
+
     // Check if origin is allowed
     if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    
+
     // Also allow localhost for development convenience
     if (origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
       return callback(null, true);
     }
-    
+
     return callback(new Error('Not allowed by CORS'));
   },
   methods: ['GET', 'POST'],
@@ -90,7 +91,7 @@ app.post('/api/auth/signup', async (req, res) => {
     if (!username || !password) {
       return res.status(400).json({ success: false, error: 'Username and password are required' });
     }
-    
+
     const cleanUsername = username.trim();
     if (cleanUsername.length < 3 || cleanUsername.length > 20) {
       return res.status(400).json({ success: false, error: 'Username must be between 3 and 20 characters' });
@@ -177,16 +178,22 @@ app.post('/api/auth/color', authenticateToken, async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-app.get('/api/rooms', async (req, res) => {
+app.get('/api/rooms', authenticateToken, async (req, res) => {
   try {
-    const rooms = await db.getRooms();
-    
-    // Annotate with active player counts
+    const rooms = await db.getRooms(req.user.username);
+
+    // Annotate with active player counts and strip passwordHash
     const roomsWithCounts = rooms.map(room => {
       const roomSockets = io.sockets.adapter.rooms.get(room.id);
       const activeCount = roomSockets ? roomSockets.size : 0;
       return {
-        ...room,
+        id: room.id,
+        roomId: room.roomId,
+        name: room.name,
+        roomName: room.roomName || room.name,
+        createdBy: room.createdBy,
+        createdAt: room.createdAt || room.created_at,
+        members: room.members,
         activeCount
       };
     });
@@ -200,26 +207,107 @@ app.get('/api/rooms', async (req, res) => {
   }
 });
 
-app.post('/api/rooms', async (req, res) => {
+app.post('/api/rooms', authenticateToken, async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, password } = req.body;
     if (!name || name.trim() === '') {
       return res.status(400).json({ success: false, error: 'Room name is required' });
     }
-    
-    // Create URL-friendly slug as room ID
-    const id = name
+    if (!password || password.length < 6) {
+      return res.status(400).json({ success: false, error: 'Password must be at least 6 characters' });
+    }
+
+    // Create URL-friendly slug as internal room ID (slug)
+    const baseSlug = name
       .toLowerCase()
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
 
-    if (!id) {
+    if (!baseSlug) {
       return res.status(400).json({ success: false, error: 'Invalid room name' });
     }
 
-    const room = await db.createRoom(id, name.trim());
+    // Room names are NOT unique — only roomId (8-digit) is unique.
+    // Make the internal slug unique by appending a short random suffix if needed.
+    let id = baseSlug;
+    let attempt = await db.getRoomById(id);
+    while (attempt) {
+      id = `${baseSlug}-${Math.random().toString(36).substring(2, 6)}`;
+      attempt = await db.getRoomById(id);
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const room = await db.createRoom(id, name.trim(), passwordHash, req.user.username);
+
+    // Do not return passwordHash
+    if (room) {
+      delete room.passwordHash;
+    }
+
     res.status(201).json({ success: true, room });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+
+app.post('/api/rooms/join', authenticateToken, async (req, res) => {
+  try {
+    const { roomId, password } = req.body;
+    if (!roomId) {
+      return res.status(400).json({ success: false, error: 'Room ID is required' });
+    }
+    if (!password) {
+      return res.status(400).json({ success: false, error: 'Room password is required' });
+    }
+
+    // Search room by roomId
+    const room = await db.getRoomByRoomId(roomId.trim());
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+
+    // Verify password if protected
+    if (room.passwordHash) {
+      const match = await bcrypt.compare(password, room.passwordHash);
+      if (!match) {
+        return res.status(400).json({ success: false, error: 'Incorrect room password.' });
+      }
+    }
+
+    // Add user to room members
+    await db.addRoomMember(room.id, req.user.username);
+
+    // Fetch updated room
+    const updatedRoom = await db.getRoomById(room.id);
+    if (updatedRoom) {
+      delete updatedRoom.passwordHash;
+    }
+
+    res.json({ success: true, room: updatedRoom });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Delete room (owner only, from lobby)
+app.delete('/api/rooms/:slug', authenticateToken, async (req, res) => {
+  try {
+    const room = await db.getRoomById(req.params.slug);
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+    if (room.createdBy !== req.user.username) {
+      return res.status(403).json({ success: false, error: 'Only the room owner can delete this room.' });
+    }
+    await db.deleteRoom(req.params.slug);
+    // Notify any active sockets in this room
+    const roomSockets = io.sockets.adapter.rooms.get(req.params.slug);
+    if (roomSockets) {
+      io.to(req.params.slug).emit('room_deleted');
+    }
+    res.json({ success: true, message: 'Room deleted successfully.' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -232,9 +320,44 @@ io.on('connection', (socket) => {
   console.log(`🔌 User connected: ${socket.id}`);
 
   // User Joins a specific room
-  socket.on('join_room', async ({ roomId, name, color }) => {
+  socket.on('join_room', async ({ roomId, name, color, token }) => {
     try {
+      if (!token) {
+        socket.emit('error_message', 'Access denied: Authentication token missing.');
+        return;
+      }
+
+      let decodedUser;
+      try {
+        decodedUser = jwt.verify(token, JWT_SECRET);
+      } catch (err) {
+        socket.emit('error_message', 'Access denied: Invalid or expired token.');
+        return;
+      }
+
+      const decodedUsername = decodedUser.username;
+
+      // Verify membership
+      const room = await db.getRoomById(roomId);
+      if (!room) {
+        socket.emit('error_message', 'Room not found.');
+        return;
+      }
+
+      // Check membership if room has password hash
+      if (room.passwordHash) {
+        const isMember =
+          room.createdBy === decodedUsername ||
+          (room.members && room.members.includes(decodedUsername.toLowerCase()));
+
+        if (!isMember) {
+          socket.emit('error_message', 'Access denied: You are not authorized to join this room.');
+          return;
+        }
+      }
+
       currentRoomId = roomId;
+      socket.userData = { username: decodedUsername };
       socket.join(roomId);
 
       // Add to active users
@@ -262,6 +385,7 @@ io.on('connection', (socket) => {
         drawings,
         stickyNotes,
         chatHistory,
+        roomCreatedBy: room.createdBy,
         activeUsers: Object.values(activeUsers[roomId])
       });
 
@@ -299,21 +423,30 @@ io.on('connection', (socket) => {
   });
 
   // Drawing: drawing path segments
-  socket.on('draw_stroke', async ({ points, color, width }) => {
+  socket.on('draw_stroke', async ({ id, points, color, width, eraser }) => {
     if (!currentRoomId) return;
-    
-    // Broadcast stroke immediately to other participants in real-time
+
+    // Broadcast stroke to other participants with the client-generated id
     socket.to(currentRoomId).emit('stroke_drawn', {
-      points,
-      color,
-      width
+      id, points, color, width, eraser: eraser || false
     });
 
-    // Save to PostgreSQL database asynchronously in the background
+    // Save to database asynchronously in the background
     try {
-      await db.addDrawing(currentRoomId, points, color, width);
+      await db.addDrawing(currentRoomId, points, color, width, eraser, id);
     } catch (err) {
       console.error('Failed to save drawing:', err.message);
+    }
+  });
+
+  // Undo: remove stroke by client-generated stroke id
+  socket.on('undo_last_stroke', async ({ strokeId }) => {
+    if (!currentRoomId) return;
+    try {
+      await db.deleteDrawingByStrokeId(currentRoomId, strokeId);
+      io.to(currentRoomId).emit('stroke_undone', { strokeId });
+    } catch (err) {
+      console.error('Failed to undo stroke:', err.message);
     }
   });
 
@@ -395,6 +528,33 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Delete room (creator only)
+  socket.on('delete_room', async () => {
+    if (!currentRoomId) return;
+    try {
+      const room = await db.getRoomById(currentRoomId);
+      if (!room) {
+        socket.emit('error_message', 'Room not found.');
+        return;
+      }
+      const username = socket.userData?.username;
+      if (!username) {
+        socket.emit('error_message', 'Authentication required.');
+        return;
+      }
+      if (room.createdBy !== username) {
+        socket.emit('error_message', 'Only the room creator can delete the room.');
+        return;
+      }
+      io.to(currentRoomId).emit('room_deleted');
+      await db.deleteRoom(currentRoomId);
+      console.log(`🗑️ Room "${currentRoomId}" deleted by creator "${username}"`);
+    } catch (err) {
+      console.error('Error on delete_room:', err);
+      socket.emit('error_message', 'Failed to delete room.');
+    }
+  });
+
   // Leave room manually
   socket.on('leave_room', () => {
     if (currentRoomId && activeUsers[currentRoomId] && activeUsers[currentRoomId][socket.id]) {
@@ -413,14 +573,14 @@ io.on('connection', (socket) => {
   // Disconnection handler
   socket.on('disconnect', () => {
     console.log(`🔌 User disconnected: ${socket.id}`);
-    
+
     if (currentRoomId && activeUsers[currentRoomId] && activeUsers[currentRoomId][socket.id]) {
       const user = activeUsers[currentRoomId][socket.id];
       socket.to(currentRoomId).emit('user_left', socket.id);
-      
+
       delete activeUsers[currentRoomId][socket.id];
       console.log(`👤 User "${user.name}" left room "${currentRoomId}"`);
-      
+
       // Clean up empty room listings
       if (Object.keys(activeUsers[currentRoomId]).length === 0) {
         delete activeUsers[currentRoomId];
