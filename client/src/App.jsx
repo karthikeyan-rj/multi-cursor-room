@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { showToast } from './utils/toast';
 import { useTheme } from './hooks/useTheme';
 import { useAuth } from './hooks/useAuth';
@@ -15,10 +15,12 @@ export default function App() {
   useTheme(auth.cursorColor);
 
   const [activeTool, setActiveTool] = useState('cursor');
-  const [paletteOpen, setPaletteOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [textInput, setTextInput] = useState(null);
+  const textInputRef = useRef(null);
 
   const session = useRoomSession({
+    userId: auth.userId,
     username: auth.username,
     cursorColor: auth.cursorColor,
     activeTool,
@@ -34,9 +36,24 @@ export default function App() {
     onJoinRoom: session.joinRoom
   });
 
+  function isTypingInEditableElement() {
+    const active = document.activeElement;
+    if (!active) return false;
+    return (
+      active.tagName === 'INPUT' ||
+      active.tagName === 'TEXTAREA' ||
+      active.tagName === 'SELECT' ||
+      active.isContentEditable ||
+      active.closest('.sticky-note-element') ||
+      active.closest('.sticky-note-textarea') ||
+      active.closest('.chat-input') ||
+      active.closest('.auth-form')
+    );
+  }
+
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (isTypingInEditableElement()) return;
       if (e.ctrlKey && e.key === 'z') {
         e.preventDefault();
         session.undoLastStroke();
@@ -46,7 +63,12 @@ export default function App() {
         switch (e.key.toLowerCase()) {
           case 'v': e.preventDefault(); setActiveTool('cursor'); break;
           case 'p': e.preventDefault(); setActiveTool('draw'); break;
+          case 'l': e.preventDefault(); setActiveTool('line'); break;
+          case 'r': e.preventDefault(); setActiveTool('rect'); break;
+          case 'c': e.preventDefault(); setActiveTool('circle'); break;
+          case 't': e.preventDefault(); setActiveTool('text'); break;
           case 'e': e.preventDefault(); setActiveTool('eraser'); break;
+          case 'h': e.preventDefault(); setActiveTool('hand'); break;
           case 's': e.preventDefault(); setActiveTool('sticky'); break;
           case 'escape': setActiveTool('cursor'); break;
         }
@@ -55,6 +77,20 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [session.undoLastStroke]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleCanvasClick = useCallback((e) => {
+    if (activeTool === 'text' && e.target.tagName === 'CANVAS') {
+      setTextInput({ x: e.clientX, y: e.clientY });
+      setTimeout(() => textInputRef.current?.focus(), 50);
+    }
+  }, [activeTool]);
+
+  const handleTextSubmit = useCallback((text) => {
+    if (textInput && text.trim()) {
+      session.handlePlaceText(textInput.x, textInput.y, text);
+    }
+    setTextInput(null);
+  }, [textInput, session]);
 
   const handleToggleChat = (_, forceClose) => {
     if (forceClose === false) {
@@ -114,6 +150,7 @@ export default function App() {
     return (
       <ToastProvider>
         <LobbyScreen
+          userId={auth.userId}
           username={auth.username}
           cursorColor={auth.cursorColor}
           rooms={rooms.rooms}
@@ -146,7 +183,10 @@ export default function App() {
       <Workspace
         currentRoomName={session.currentRoomName}
         currentRoomDisplayId={session.currentRoomDisplayId}
+        currentRoomId={session.currentRoomId}
+        userId={auth.userId}
         roomCreatedBy={session.roomCreatedBy}
+        roomOwnerId={session.roomOwnerId}
         remoteCursors={session.remoteCursors}
         stickyNotes={session.stickyNotes}
         chatHistory={session.chatHistory}
@@ -156,19 +196,18 @@ export default function App() {
         activeTool={activeTool}
         brushColor={auth.brushColor}
         brushWidth={auth.brushWidth}
-        paletteOpen={paletteOpen}
         chatOpen={chatOpen}
         chatInput={session.chatInput}
         username={auth.username}
         cursorColor={auth.cursorColor}
         canvasRef={session.canvasRef}
+        textInput={textInput}
+        textInputRef={textInputRef}
         onLeaveRoom={session.leaveRoom}
         onDeleteRoom={session.handleDeleteRoom}
         onSetActiveTool={setActiveTool}
         onSetBrushColor={auth.setBrushColor}
         onSetBrushWidth={auth.setBrushWidth}
-        onTogglePalette={() => setPaletteOpen(v => !v)}
-        onClosePalette={() => setPaletteOpen(false)}
         onToggleChat={handleToggleChat}
         onCloseChat={() => setChatOpen(false)}
         onSetChatInput={session.setChatInput}
@@ -178,12 +217,25 @@ export default function App() {
         onCanvasMouseMove={session.handleCanvasMouseMove}
         onCanvasMouseUp={session.handleCanvasMouseUp}
         onClearCanvas={session.clearCanvas}
+        onClearBoard={session.clearBoard}
+        onUndo={session.undoLastStroke}
         onBoardClick={session.handleBoardClick}
-        onBoardDoubleClick={session.handleBoardDoubleClick}
+        onCanvasClick={handleCanvasClick}
+        onTextSubmit={handleTextSubmit}
         onNoteMouseDown={session.handleNoteMouseDown}
         onNoteUpdate={session.updateStickyText}
         onNoteDelete={session.deleteSticky}
         onCopy={copyToClipboard}
+        viewport={session.viewport}
+        isPanning={session.isPanning}
+        onZoomIn={session.handleZoomIn}
+        onZoomOut={session.handleZoomOut}
+        onZoomReset={session.handleZoomReset}
+        boardColor={session.boardColor}
+        onSetBoardColor={session.handleSetBoardColor}
+        replyingTo={session.replyingTo}
+        onSetReplyTarget={session.setReplyingTo}
+        onCancelReply={session.handleCancelReply}
       />
     </ToastProvider>
   );

@@ -48,6 +48,25 @@ async function initDb() {
   // Sparse unique index: only enforces uniqueness when roomId field is present
   await db.collection('rooms').createIndex({ roomId: 1 }, { unique: true, sparse: true });
 
+  // Ensure users collection has correct indexes for email auth
+  const userIndexes = await db.collection('users').indexes();
+  for (const idx of userIndexes) {
+    // Drop any legacy unique index on username (old schema used _id as username)
+    if (idx.key && idx.key.username === 1 && idx.unique) {
+      await db.collection('users').dropIndex(idx.name);
+      console.log(`✅ Dropped legacy unique index: ${idx.name}`);
+    }
+  }
+  // Create unique index on email (idempotent — safe to call repeatedly)
+  try {
+    await db.collection('users').createIndex({ email: 1 }, { unique: true });
+  } catch (idxErr) {
+    console.warn('⚠️ Could not create unique email index on users collection.');
+    console.warn('   This is expected if existing users lack an email field.');
+    console.warn('   To fix, either update old users with email values or clear the collection.');
+    console.warn('   Error:', idxErr.message);
+  }
+
   // used_room_ids: permanently tracks every roomId ever assigned (even deleted rooms)
   await db.collection('used_room_ids').createIndex({ roomId: 1 }, { unique: true });
 
@@ -73,14 +92,14 @@ function requireRoomId(roomId, label) {
 
 // ── Room Operations ──────────────────────────────────────────────────────────
 
-async function getRooms(username) {
-  if (!username) {
+async function getRooms(userId, email) {
+  if (!userId && !email) {
     return [];
   }
   const docs = await db.collection('rooms').find({
     $or: [
-      { createdBy: username },
-      { members: username.toLowerCase() }
+      { ownerId: userId },
+      { 'participants.userId': userId }
     ]
   }).sort({ createdAt: 1, created_at: 1 }).toArray();
 
@@ -95,7 +114,7 @@ async function getRooms(username) {
     }
   }
 
-  return docs.map(mapDoc);
+  return docs.map(doc => ({ ...mapDoc(doc), ownerId: doc.ownerId, participants: doc.participants }));
 }
 
 async function getRoomById(id) {
@@ -156,10 +175,9 @@ async function getRoomByRoomId(roomId) {
   return mapDoc(doc);
 }
 
-async function createRoom(id, roomName, passwordHash, createdBy) {
+async function createRoom(id, roomName, passwordHash, ownerId, ownerEmail, ownerName) {
   const now = new Date();
   const roomId = await generateUniqueRoomId();
-  // Permanently record this roomId so it is never reused
   await db.collection('used_room_ids').insertOne({ roomId, created_at: now });
   const roomDoc = {
     _id: id,
@@ -168,13 +186,24 @@ async function createRoom(id, roomName, passwordHash, createdBy) {
     name: roomName,
     roomName,
     passwordHash,
-    createdBy,
+    ownerId,
+    ownerEmail,
+    ownerName,
     createdAt: now,
     created_at: now,
-    members: [createdBy.toLowerCase()]
+    participants: [
+      { userId: ownerId, email: ownerEmail, username: ownerName, joinedAt: now }
+    ]
   };
   await db.collection('rooms').insertOne(roomDoc);
-  return mapDoc(roomDoc);
+  return { ...mapDoc(roomDoc), ownerId, participants: roomDoc.participants };
+}
+
+async function setBoardColor(roomId, color) {
+  await db.collection('rooms').updateOne(
+    { roomId },
+    { $set: { boardColor: color } }
+  );
 }
 
 async function deleteRoom(id) {
@@ -191,13 +220,19 @@ async function deleteRoom(id) {
   await db.collection('drawings').deleteMany({ room_id: roomSlug });
   await db.collection('sticky_notes').deleteMany({ room_id: roomSlug });
   await db.collection('chat_messages').deleteMany({ room_id: roomSlug });
+  await db.collection('file_messages').deleteMany({ room_id: roomSlug });
   return true;
 }
 
-async function addRoomMember(roomId, username) {
+async function addRoomMember(roomId, userId, email, username) {
+  const existing = await db.collection('rooms').findOne({
+    _id: roomId,
+    'participants.userId': userId
+  });
+  if (existing) return;
   await db.collection('rooms').updateOne(
     { _id: roomId },
-    { $addToSet: { members: username.toLowerCase() } }
+    { $push: { participants: { userId, email, username, joinedAt: new Date() } } }
   );
 }
 
@@ -211,9 +246,20 @@ async function getDrawings(roomId) {
   return docs.map(doc => ({ ...mapDoc(doc), id: doc._id.toString() }));
 }
 
-async function addDrawing(roomId, points, color, width, eraser, strokeId) {
+async function addDrawing(roomId, fields) {
   requireRoomId(roomId, 'Drawing');
-  const doc = { room_id: roomId, points, color, width, eraser: eraser || false, stroke_id: strokeId || null, created_at: new Date() };
+  const doc = {
+    room_id: roomId,
+    type: fields.type || 'pen',
+    points: fields.points || [],
+    x: fields.x, y: fields.y, w: fields.w, h: fields.h,
+    text: fields.text,
+    color: fields.color,
+    size: fields.size,
+    eraser: fields.eraser || false,
+    stroke_id: fields.stroke_id || null,
+    created_at: new Date()
+  };
   const result = await db.collection('drawings').insertOne(doc);
   return { ...doc, id: result.insertedId.toString() };
 }
@@ -227,6 +273,11 @@ async function clearDrawings(roomId) {
   return true;
 }
 
+async function clearStickyNotes(roomId) {
+  await db.collection('sticky_notes').deleteMany({ room_id: roomId });
+  return true;
+}
+
 // ── Sticky Note Operations ───────────────────────────────────────────────────
 
 async function getStickyNotes(roomId) {
@@ -234,7 +285,7 @@ async function getStickyNotes(roomId) {
     .find({ room_id: roomId })
     .sort({ created_at: 1 })
     .toArray();
-  return docs.map(mapDoc);
+  return docs.map(doc => ({ ...mapDoc(doc), id: doc._id.toString() }));
 }
 
 async function saveStickyNote(id, roomId, x, y, text, color, creatorName) {
@@ -282,39 +333,91 @@ async function getChatMessages(roomId, limit = 50) {
   return docs.reverse().map(doc => ({ ...mapDoc(doc), id: doc._id.toString() }));
 }
 
-async function saveChatMessage(roomId, senderName, senderColor, message) {
+async function saveChatMessage(roomId, senderName, senderColor, message, senderId, replyTo) {
   requireRoomId(roomId, 'ChatMessage');
   const doc = { room_id: roomId, sender_name: senderName, sender_color: senderColor, message, created_at: new Date() };
+  if (senderId) doc.sender_id = senderId;
+  if (replyTo) doc.reply_to = replyTo;
   const result = await db.collection('chat_messages').insertOne(doc);
   return { ...doc, id: result.insertedId.toString() };
 }
 
-// ── User Operations ──────────────────────────────────────────────────────────
+// ── File Message Operations ────────────────────────────────────────────────
 
-async function getUser(username) {
-  const doc = await db.collection('users').findOne({ _id: username.toLowerCase() });
-  return mapDoc(doc);
+async function getFileMessages(roomId) {
+  const docs = await db.collection('file_messages')
+    .find({ room_id: roomId })
+    .sort({ created_at: 1 })
+    .toArray();
+  return docs.map(doc => ({ ...doc, id: doc._id.toString() }));
 }
 
-async function createUser(username, passwordHash, color) {
-  const user = {
-    _id: username.toLowerCase(),
-    username,
-    password_hash: passwordHash,
-    color,
+async function saveFileMessage(roomId, senderName, fileName, originalName, mimeType, size, url, cloudinaryPublicId, senderId) {
+  requireRoomId(roomId, 'FileMessage');
+  const doc = {
+    room_id: roomId, sender_name: senderName, type: 'file',
+    file_name: fileName, original_name: originalName,
+    mime_type: mimeType, size, url,
+    cloudinary_public_id: cloudinaryPublicId,
     created_at: new Date()
   };
-  await db.collection('users').insertOne(user);
-  return mapDoc(user);
+  if (senderId) doc.sender_id = senderId;
+  const result = await db.collection('file_messages').insertOne(doc);
+  return { ...doc, id: result.insertedId.toString() };
 }
 
-async function updateUserColor(username, color) {
+async function deleteFileMessagesByRoom(roomId) {
+  const docs = await db.collection('file_messages').find({ room_id: roomId }).toArray();
+  await db.collection('file_messages').deleteMany({ room_id: roomId });
+  return docs;
+}
+
+// ── User Operations ──────────────────────────────────────────────────────────
+
+async function getUserByEmail(email) {
+  const normalized = email.toLowerCase().trim();
+  const doc = await db.collection('users').findOne({ email: normalized });
+  if (!doc) return null;
+  const { _id, ...rest } = doc;
+  return { ...rest, id: _id.toString() };
+}
+
+async function getUserByUsername(username) {
+  const normalized = username.toLowerCase();
+  const doc = await db.collection('users').findOne({
+    $or: [
+      { _id: normalized },
+      { username: { $regex: new RegExp(`^${normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') } }
+    ]
+  });
+  if (!doc) return null;
+  const { _id, ...rest } = doc;
+  return { ...rest, id: _id.toString() };
+}
+
+async function createUser(username, email, passwordHash, color) {
+  const now = new Date();
+  const user = {
+    username,
+    email: email.toLowerCase().trim(),
+    password_hash: passwordHash,
+    color,
+    created_at: now,
+    updated_at: now
+  };
+  const result = await db.collection('users').insertOne(user);
+  return { ...mapDoc(user), id: result.insertedId.toString() };
+}
+
+async function updateUserColorByEmail(email, color) {
+  const normalized = email.toLowerCase().trim();
   const doc = await db.collection('users').findOneAndUpdate(
-    { _id: username.toLowerCase() },
-    { $set: { color } },
+    { email: normalized },
+    { $set: { color, updated_at: new Date() } },
     { returnDocument: 'after' }
   );
-  return mapDoc(doc);
+  if (!doc) return null;
+  return { ...mapDoc(doc), id: doc._id.toString() };
 }
 
 module.exports = {
@@ -330,6 +433,7 @@ module.exports = {
   addDrawing,
   deleteDrawingByStrokeId,
   clearDrawings,
+  clearStickyNotes,
   getStickyNotes,
   saveStickyNote,
   updateStickyNotePosition,
@@ -337,7 +441,12 @@ module.exports = {
   deleteStickyNote,
   getChatMessages,
   saveChatMessage,
-  getUser,
+  getFileMessages,
+  saveFileMessage,
+  deleteFileMessagesByRoom,
+  setBoardColor,
+  getUserByEmail,
+  getUserByUsername,
   createUser,
-  updateUserColor
+  updateUserColorByEmail
 };

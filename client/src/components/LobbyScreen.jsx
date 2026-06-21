@@ -4,7 +4,7 @@ import { showToast } from '../utils/toast';
 import Starfield from './Starfield';
 
 export default function LobbyScreen({
-  username, cursorColor, rooms,
+  userId, username, cursorColor, rooms,
   createdRoomDetails, promptRoom, promptError, joinError,
   onLogout, onColorChange,
   onJoinRoom, onCreateRoom, onPromptSubmit,
@@ -135,7 +135,7 @@ export default function LobbyScreen({
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <h3 className="room-card-title">{room.name || room.roomName}</h3>
-                    {room.createdBy === username && (
+                    {room.ownerId === userId && (
                       <span className="room-card-badge">Your Room</span>
                     )}
                   </div>
@@ -152,7 +152,7 @@ export default function LobbyScreen({
                     <button className="btn-enter-room" onClick={() => { setPromptPassword(''); onEnterRoom(room); }}>
                       Enter →
                     </button>
-                    {room.createdBy === username && (
+                    {room.ownerId === userId && (
                       <button
                         onClick={() => {
                           if (window.confirm(`Delete room "${room.name || room.roomName}" permanently?`)) {
@@ -175,7 +175,7 @@ export default function LobbyScreen({
                       <span className="dot" />
                       {room.activeCount || 0} active
                     </span>
-                    {room.createdBy !== username && (
+                    {room.ownerId !== userId && (
                       <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                         by {room.createdBy}
                       </span>

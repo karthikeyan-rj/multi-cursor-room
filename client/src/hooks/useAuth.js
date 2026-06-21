@@ -8,6 +8,7 @@ export function useAuth() {
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
   const [authBusy, setAuthBusy] = useState(false);
+  const [userId, setUserId] = useState('');
   const [username, setUsername] = useState('');
   const [cursorColor, setCursorColor] = useState(() => {
     const saved = localStorage.getItem('cursor_room_color');
@@ -25,12 +26,14 @@ export function useAuth() {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await response.json();
-        if (data.success) {
-          setCurrentUser(data.user);
-          setUsername(data.user.username);
-          setCursorColor(data.user.color);
-          setBrushColor(data.user.color);
-        } else {
+      if (data.success) {
+        localStorage.setItem('cursor_room_token', data.token);
+        setCurrentUser(data.user);
+        setUserId(data.user.userId);
+        setUsername(data.user.username);
+        setCursorColor(data.user.color);
+        setBrushColor(data.user.color);
+      } else {
           localStorage.removeItem('cursor_room_token');
         }
       } catch {
@@ -42,14 +45,14 @@ export function useAuth() {
     checkAuth();
   }, []);
 
-  const handleSignup = async (authUsername, authPassword) => {
+  const handleSignup = async (authUsername, authEmail, authPassword) => {
     setAuthBusy(true);
     setAuthError('');
     try {
       const response = await fetch(`${SERVER_URL}/api/auth/signup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: authUsername, password: authPassword, color: cursorColor })
+        body: JSON.stringify({ username: authUsername, email: authEmail, password: authPassword, color: cursorColor })
       });
       const data = await response.json();
       if (data.success) {
@@ -69,19 +72,20 @@ export function useAuth() {
     }
   };
 
-  const handleLogin = async (authUsername, authPassword) => {
+  const handleLogin = async (authEmail, authPassword) => {
     setAuthBusy(true);
     setAuthError('');
     try {
       const response = await fetch(`${SERVER_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: authUsername, password: authPassword })
+        body: JSON.stringify({ email: authEmail, password: authPassword })
       });
       const data = await response.json();
       if (data.success) {
         localStorage.setItem('cursor_room_token', data.token);
         setCurrentUser(data.user);
+        setUserId(data.user.userId);
         setUsername(data.user.username);
         setCursorColor(data.user.color);
         setBrushColor(data.user.color);
@@ -99,6 +103,7 @@ export function useAuth() {
   const handleLogout = (onLeaveRoom) => {
     localStorage.removeItem('cursor_room_token');
     setCurrentUser(null);
+    setUserId('');
     setUsername('');
     onLeaveRoom?.();
   };
@@ -124,7 +129,7 @@ export function useAuth() {
 
   return {
     currentUser, authError, authLoading, authBusy,
-    username, cursorColor, brushColor, setBrushColor,
+    userId, username, cursorColor, brushColor, setBrushColor,
     brushWidth, setBrushWidth,
     handleSignup, handleLogin, handleLogout, handleColorChange
   };

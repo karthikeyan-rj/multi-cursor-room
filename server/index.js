@@ -1,40 +1,22 @@
+require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
+const path = require('path');
 const { Server } = require('socket.io');
 const cors = require('cors');
-const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const db = require('./db');
+const { authenticateToken } = require('./middleware/auth');
+const cloudinary = require('./config/cloudinary');
+const { JWT_SECRET } = require('./config/jwt');
+const fileRoutes = require('./routes/fileRoutes');
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 3001;
 
-const JWT_SECRET = process.env.JWT_SECRET || 'cursor_room_super_secret_key_123';
-
-// Password hashing helper using PBKDF2
-function hashPassword(password) {
-  const salt = 'cursor_room_secret_salt_987';
-  return crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha256').toString('hex');
-}
-
-// Authentication middleware
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers['authorization'];
-  const token = authHeader && authHeader.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({ success: false, error: 'Unauthorized: Access token missing' });
-  }
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) {
-      return res.status(403).json({ success: false, error: 'Forbidden: Invalid or expired token' });
-    }
-    req.user = user;
-    next();
-  });
-};
+// Authentication middleware (extracted to middleware/auth.js)
 
 // Middleware
 app.use(express.json());
@@ -48,8 +30,15 @@ const corsOptions = {
     // Allow requests with no origin (like mobile apps or curl)
     if (!origin) return callback(null, true);
 
-    // If no ALLOWED_ORIGINS is specified in env, allow all origins
+    // If no ALLOWED_ORIGINS is specified in env
     if (allowedOrigins.length === 0) {
+      if (process.env.NODE_ENV === 'production') {
+        console.warn(
+          'CORS BLOCKED: ALLOWED_ORIGINS not set in production.\n' +
+          '  Set ALLOWED_ORIGINS to your frontend URL(s) in environment variables.'
+        );
+        return callback(new Error('Not allowed by CORS'));
+      }
       return callback(null, true);
     }
 
@@ -70,6 +59,27 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
+// File upload routes
+app.use('/api/rooms', fileRoutes);
+
+// Dev-only: serve local uploaded files and cloudinary debug endpoint
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+  app.get('/api/debug/cloudinary-test', (req, res) => {
+    res.json({
+      success: true,
+      cloudinary_configured: Boolean(
+        process.env.CLOUDINARY_CLOUD_NAME &&
+        process.env.CLOUDINARY_API_KEY &&
+        process.env.CLOUDINARY_API_SECRET
+      ),
+      cloud_name: process.env.CLOUDINARY_CLOUD_NAME || '(not set)',
+      has_api_key: !!process.env.CLOUDINARY_API_KEY,
+      has_api_secret: !!process.env.CLOUDINARY_API_SECRET
+    });
+  });
+}
+
 app.get('/', (req, res) => {
   res.json({ success: true, message: "Multiplayer Cursor Room Backend is running!", status: "healthy" });
 });
@@ -80,6 +90,9 @@ const io = new Server(server, {
   cors: corsOptions
 });
 
+// Make io accessible to route handlers via req.app.get('io')
+app.set('io', io);
+
 // In-memory active users tracker (scoped by roomId)
 // Structure: { [roomId]: { [socketId]: { id, name, color, x, y } } }
 const activeUsers = {};
@@ -87,9 +100,9 @@ const activeUsers = {};
 // HTTP REST API - Authentication Routes
 app.post('/api/auth/signup', async (req, res) => {
   try {
-    const { username, password, color } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ success: false, error: 'Username and password are required' });
+    const { username, email, password, color } = req.body;
+    if (!username || !email || !password) {
+      return res.status(400).json({ success: false, error: 'Username, email, and password are required' });
     }
 
     const cleanUsername = username.trim();
@@ -97,48 +110,58 @@ app.post('/api/auth/signup', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Username must be between 3 and 20 characters' });
     }
 
-    const existingUser = await db.getUser(cleanUsername);
-    if (existingUser) {
-      return res.status(400).json({ success: false, error: 'Username already taken' });
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.includes('@') || cleanEmail.startsWith('@') || cleanEmail.endsWith('@')) {
+      return res.status(400).json({ success: false, error: 'Please enter a valid email address' });
     }
 
-    const passwordHash = hashPassword(password);
-    const userColor = color || '#FF6B6B';
-    const user = await db.createUser(cleanUsername, passwordHash, userColor);
+    const existingEmail = await db.getUserByEmail(cleanEmail);
+    if (existingEmail) {
+      return res.status(409).json({ success: false, error: 'This email is already registered. Try logging in instead.' });
+    }
 
-    const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+    const passwordHash = await bcrypt.hash(password, 10);
+    const userColor = color || '#FF6B6B';
+    const user = await db.createUser(cleanUsername, cleanEmail, passwordHash, userColor);
+
+    const token = jwt.sign({ userId: user.id, username: user.username, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
     res.status(201).json({
       success: true,
       token,
-      user: { username: user.username, color: user.color }
+      user: { userId: user.id, username: user.username, email: user.email, color: user.color }
     });
   } catch (err) {
+    // Catch MongoDB duplicate key errors and show a friendly message
+    if (err.code === 11000) {
+      return res.status(409).json({ success: false, error: 'This email is already registered. Try logging in instead.' });
+    }
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ success: false, error: 'Username and password are required' });
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ success: false, error: 'Email and password are required' });
     }
 
-    const user = await db.getUser(username.trim());
+    const cleanEmail = email.trim().toLowerCase();
+    const user = await db.getUserByEmail(cleanEmail);
     if (!user) {
-      return res.status(400).json({ success: false, error: 'Invalid username or password' });
+      return res.status(400).json({ success: false, error: 'Invalid email or password' });
     }
 
-    const passwordHash = hashPassword(password);
-    if (user.password_hash !== passwordHash) {
-      return res.status(400).json({ success: false, error: 'Invalid username or password' });
+    const passwordMatch = await bcrypt.compare(password, user.password_hash);
+    if (!passwordMatch) {
+      return res.status(400).json({ success: false, error: 'Invalid email or password' });
     }
 
-    const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: '7d' });
+    const token = jwt.sign({ userId: user.id, username: user.username, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
     res.json({
       success: true,
       token,
-      user: { username: user.username, color: user.color }
+      user: { userId: user.id, username: user.username, email: user.email, color: user.color }
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -147,13 +170,13 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', authenticateToken, async (req, res) => {
   try {
-    const user = await db.getUser(req.user.username);
+    const user = await db.getUserByEmail(req.user.email);
     if (!user) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
     res.json({
       success: true,
-      user: { username: user.username, color: user.color }
+      user: { userId: user.id, username: user.username, email: user.email, color: user.color }
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -166,13 +189,13 @@ app.post('/api/auth/color', authenticateToken, async (req, res) => {
     if (!color) {
       return res.status(400).json({ success: false, error: 'Color is required' });
     }
-    const user = await db.updateUserColor(req.user.username, color);
+    const user = await db.updateUserColorByEmail(req.user.email, color);
     if (!user) {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
     res.json({
       success: true,
-      user: { username: user.username, color: user.color }
+      user: { userId: user.id, username: user.username, email: user.email, color: user.color }
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -180,9 +203,8 @@ app.post('/api/auth/color', authenticateToken, async (req, res) => {
 });
 app.get('/api/rooms', authenticateToken, async (req, res) => {
   try {
-    const rooms = await db.getRooms(req.user.username);
+    const rooms = await db.getRooms(req.user.userId, req.user.email);
 
-    // Annotate with active player counts and strip passwordHash
     const roomsWithCounts = rooms.map(room => {
       const roomSockets = io.sockets.adapter.rooms.get(room.id);
       const activeCount = roomSockets ? roomSockets.size : 0;
@@ -191,9 +213,9 @@ app.get('/api/rooms', authenticateToken, async (req, res) => {
         roomId: room.roomId,
         name: room.name,
         roomName: room.roomName || room.name,
-        createdBy: room.createdBy,
+        createdBy: room.ownerName,
+        ownerId: room.ownerId,
         createdAt: room.createdAt || room.created_at,
-        members: room.members,
         activeCount
       };
     });
@@ -238,11 +260,11 @@ app.post('/api/rooms', authenticateToken, async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const room = await db.createRoom(id, name.trim(), passwordHash, req.user.username);
+    const room = await db.createRoom(id, name.trim(), passwordHash, req.user.userId, req.user.email, req.user.username);
 
-    // Do not return passwordHash
     if (room) {
       delete room.passwordHash;
+      room.createdBy = room.ownerName;
     }
 
     res.status(201).json({ success: true, room });
@@ -276,13 +298,12 @@ app.post('/api/rooms/join', authenticateToken, async (req, res) => {
       }
     }
 
-    // Add user to room members
-    await db.addRoomMember(room.id, req.user.username);
+    await db.addRoomMember(room.id, req.user.userId, req.user.email, req.user.username);
 
-    // Fetch updated room
     const updatedRoom = await db.getRoomById(room.id);
     if (updatedRoom) {
       delete updatedRoom.passwordHash;
+      updatedRoom.createdBy = updatedRoom.ownerName;
     }
 
     res.json({ success: true, room: updatedRoom });
@@ -298,7 +319,7 @@ app.delete('/api/rooms/:slug', authenticateToken, async (req, res) => {
     if (!room) {
       return res.status(404).json({ success: false, error: 'Room not found.' });
     }
-    if (room.createdBy !== req.user.username) {
+    if (room.ownerId !== req.user.userId) {
       return res.status(403).json({ success: false, error: 'Only the room owner can delete this room.' });
     }
     await db.deleteRoom(req.params.slug);
@@ -332,7 +353,7 @@ io.on('connection', (socket) => {
         return;
       }
 
-      const decodedUsername = decodedUser.username;
+      const decodedUserId = decodedUser.userId;
 
       // Verify membership
       const room = await db.getRoomById(roomId);
@@ -344,8 +365,8 @@ io.on('connection', (socket) => {
       // Check membership if room has password hash
       if (room.passwordHash) {
         const isMember =
-          room.createdBy === decodedUsername ||
-          (room.members && room.members.includes(decodedUsername.toLowerCase()));
+          room.ownerId === decodedUserId ||
+          (room.participants && room.participants.some(p => p.userId === decodedUserId));
 
         if (!isMember) {
           socket.emit('error_message', 'Access denied: You are not authorized to join this room.');
@@ -354,7 +375,7 @@ io.on('connection', (socket) => {
       }
 
       currentRoomId = roomId;
-      socket.userData = { username: decodedUsername };
+      socket.userData = { userId: decodedUserId, username: decodedUser.username };
       socket.join(roomId);
 
       // Add to active users
@@ -364,6 +385,7 @@ io.on('connection', (socket) => {
 
       activeUsers[roomId][socket.id] = {
         id: socket.id,
+        userId: decodedUserId,
         name: name || `Guest-${socket.id.substring(0, 4)}`,
         color: color || '#aa3bff',
         x: -100,
@@ -376,13 +398,17 @@ io.on('connection', (socket) => {
       const drawings = await db.getDrawings(roomId);
       const stickyNotes = await db.getStickyNotes(roomId);
       const chatHistory = await db.getChatMessages(roomId, 50);
+      const fileMessages = await db.getFileMessages(roomId);
 
       // Send initial data state back to the user
       socket.emit('room_data', {
         drawings,
         stickyNotes,
         chatHistory,
-        roomCreatedBy: room.createdBy,
+        fileMessages,
+        roomCreatedBy: room.ownerName,
+        roomOwnerId: room.ownerId,
+        boardColor: room.boardColor || null,
         activeUsers: Object.values(activeUsers[roomId])
       });
 
@@ -419,20 +445,40 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Drawing: drawing path segments
+  // Drawing: drawing path segments (pen / eraser)
   socket.on('draw_stroke', async ({ id, points, color, width, eraser }) => {
     if (!currentRoomId) return;
 
-    // Broadcast stroke to other participants with the client-generated id
     socket.to(currentRoomId).emit('stroke_drawn', {
       id, points, color, width, eraser: eraser || false
     });
 
-    // Save to database asynchronously in the background
     try {
-      await db.addDrawing(currentRoomId, points, color, width, eraser, id);
+      await db.addDrawing(currentRoomId, { type: 'pen', points, color, size: width, eraser, stroke_id: id });
     } catch (err) {
       console.error('Failed to save drawing:', err.message);
+    }
+  });
+
+  // Canvas: shape (line / rect / circle)
+  socket.on('canvas:shape', async (shape) => {
+    if (!currentRoomId) return;
+    io.to(currentRoomId).emit('canvas:shape', shape);
+    try {
+      await db.addDrawing(currentRoomId, { ...shape, stroke_id: shape.id });
+    } catch (err) {
+      console.error('Failed to save shape:', err.message);
+    }
+  });
+
+  // Canvas: text placement
+  socket.on('canvas:text', async (textData) => {
+    if (!currentRoomId) return;
+    io.to(currentRoomId).emit('canvas:text', textData);
+    try {
+      await db.addDrawing(currentRoomId, { ...textData, stroke_id: textData.id });
+    } catch (err) {
+      console.error('Failed to save text:', err.message);
     }
   });
 
@@ -447,6 +493,17 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Canvas: undo (remove any drawing element by id)
+  socket.on('canvas:undo', async ({ strokeId }) => {
+    if (!currentRoomId) return;
+    try {
+      await db.deleteDrawingByStrokeId(currentRoomId, strokeId);
+      io.to(currentRoomId).emit('canvas:undo', { strokeId });
+    } catch (err) {
+      console.error('Failed to undo canvas action:', err.message);
+    }
+  });
+
   // Canvas clear
   socket.on('clear_canvas', async () => {
     if (!currentRoomId) return;
@@ -456,6 +513,19 @@ io.on('connection', (socket) => {
       io.to(currentRoomId).emit('canvas_cleared');
     } catch (err) {
       console.error('Failed to clear canvas:', err.message);
+    }
+  });
+
+  // Board: clear all (drawings + sticky notes)
+  socket.on('board:clear-all', async () => {
+    if (!currentRoomId) return;
+
+    try {
+      await db.clearDrawings(currentRoomId);
+      await db.clearStickyNotes(currentRoomId);
+      io.to(currentRoomId).emit('board:all-cleared');
+    } catch (err) {
+      console.error('Failed to clear board:', err.message);
     }
   });
 
@@ -499,6 +569,17 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Board Color
+  socket.on('board_color_change', async ({ color }) => {
+    if (!currentRoomId) return;
+    io.to(currentRoomId).emit('board_color_changed', { color });
+    try {
+      await db.setBoardColor(currentRoomId, color);
+    } catch (err) {
+      console.error('Failed to save board color:', err.message);
+    }
+  });
+
   // Sticky Notes: Delete Note
   socket.on('delete_sticky', async (id) => {
     if (!currentRoomId) return;
@@ -513,19 +594,19 @@ io.on('connection', (socket) => {
   });
 
   // Chat Messenger
-  socket.on('send_message', async ({ message }) => {
+  socket.on('send_message', async ({ message, replyTo }) => {
     if (!currentRoomId || !activeUsers[currentRoomId] || !activeUsers[currentRoomId][socket.id]) return;
 
     const user = activeUsers[currentRoomId][socket.id];
     try {
-      const savedMsg = await db.saveChatMessage(currentRoomId, user.name, user.color, message);
+      const savedMsg = await db.saveChatMessage(currentRoomId, user.name, user.color, message, user.userId, replyTo);
       io.to(currentRoomId).emit('message_received', savedMsg);
     } catch (err) {
       console.error('Failed to save message:', err.message);
     }
   });
 
-  // Delete room (creator only)
+  // Delete room (owner only)
   socket.on('delete_room', async () => {
     if (!currentRoomId) return;
     try {
@@ -534,19 +615,32 @@ io.on('connection', (socket) => {
         socket.emit('error_message', 'Room not found.');
         return;
       }
-      const username = socket.userData?.username;
-      if (!username) {
+      const userId = socket.userData?.userId;
+      if (!userId) {
         socket.emit('error_message', 'Authentication required.');
         return;
       }
-      if (room.createdBy !== username) {
-        socket.emit('error_message', 'Only the room creator can delete the room.');
+      if (room.ownerId !== userId) {
+        socket.emit('error_message', 'Only the room owner can delete the room.');
         return;
       }
+      if (cloudinary.isConfigured) {
+        const fileMessages = await db.getFileMessages(currentRoomId);
+        for (const msg of fileMessages) {
+          if (msg.cloudinary_public_id) {
+            try {
+              await cloudinary.uploader.destroy(msg.cloudinary_public_id);
+            } catch (e) {
+              console.error('Cloudinary delete error:', e.message);
+            }
+          }
+        }
+      }
+
       io.to(currentRoomId).emit('room_deleted');
       io.emit('room_removed', { roomId: currentRoomId });
       await db.deleteRoom(currentRoomId);
-      console.log(`🗑️ Room "${currentRoomId}" deleted by creator "${username}"`);
+      console.log(`🗑️ Room "${currentRoomId}" deleted by owner ${socket.userData?.username}`);
     } catch (err) {
       console.error('Error on delete_room:', err);
       socket.emit('error_message', 'Failed to delete room.');
@@ -590,6 +684,11 @@ io.on('connection', (socket) => {
 // Connect to MongoDB then start server
 db.initDb()
   .then(() => {
+    console.log(
+      'NOTE: Password hashing changed from PBKDF2 to bcrypt.\n' +
+      '  If existing users cannot log in, ask them to sign up again.\n' +
+      '  Old password hashes are incompatible with the new bcrypt-based authentication.'
+    );
     server.listen(PORT, () => {
       console.log(`Server running on ${PORT}`);
     });

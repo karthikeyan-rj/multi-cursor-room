@@ -5,15 +5,25 @@ import Starfield from './Starfield';
 export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, onSignup, onColorChange }) {
   const [authTab, setAuthTab] = useState('login');
   const [authUsername, setAuthUsername] = useState('');
+  const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
+  const [localError, setLocalError] = useState('');
+
+  const displayError = localError || authError;
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!authUsername.trim() || !authPassword.trim()) return;
+    setLocalError('');
     if (authTab === 'login') {
-      onLogin(authUsername.trim(), authPassword.trim());
+      if (!authEmail.trim() || !authPassword.trim()) return;
+      onLogin(authEmail.trim(), authPassword.trim());
     } else {
-      onSignup(authUsername.trim(), authPassword.trim());
+      if (!authUsername.trim() || !authEmail.trim() || !authPassword.trim()) return;
+      if (!authEmail.includes('@')) {
+        setLocalError('Please enter a valid email address');
+        return;
+      }
+      onSignup(authUsername.trim(), authEmail.trim(), authPassword.trim());
     }
   };
 
@@ -46,7 +56,7 @@ export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, 
           }} />
           <div className="auth-tabs" style={{ display: 'flex', marginBottom: '28px', gap: '4px', background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '3px' }}>
           <button
-            onClick={() => { setAuthTab('login'); }}
+            onClick={() => { setAuthTab('login'); setLocalError(''); }}
             style={{
               flex: 1, padding: '10px', background: authTab === 'login' ? 'rgba(59,130,246,0.12)' : 'transparent',
               border: authTab === 'login' ? '1px solid rgba(59,130,246,0.25)' : '1px solid transparent',
@@ -58,7 +68,7 @@ export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, 
             Login
           </button>
           <button
-            onClick={() => { setAuthTab('signup'); }}
+            onClick={() => { setAuthTab('signup'); setLocalError(''); }}
             style={{
               flex: 1, padding: '10px', background: authTab === 'signup' ? 'rgba(59,130,246,0.12)' : 'transparent',
               border: authTab === 'signup' ? '1px solid rgba(59,130,246,0.25)' : '1px solid transparent',
@@ -72,24 +82,43 @@ export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, 
         </div>
 
         <form onSubmit={handleSubmit}>
-          {authError && (
+          {displayError && (
             <div style={{
               color: '#f87171', background: 'rgba(239, 68, 68, 0.1)',
               border: '1px solid rgba(239, 68, 68, 0.2)', padding: '10px 14px',
               borderRadius: '8px', fontSize: '13px', marginBottom: '20px', textAlign: 'left'
             }}>
-              {authError}
+              {displayError}
             </div>
           )}
 
           <div className="form-group" style={{ textAlign: 'left' }}>
-            <label className="form-label">Username</label>
-            <input
-              type="text" className="text-input" value={authUsername}
-              onChange={(e) => setAuthUsername(e.target.value)}
-              placeholder="Enter your username" maxLength={20} required
-            />
+            <label className="form-label">{authTab === 'login' ? 'Email' : 'Username'}</label>
+            {authTab === 'login' ? (
+              <input
+                type="email" className="text-input" value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                placeholder="Enter your email" required
+              />
+            ) : (
+              <input
+                type="text" className="text-input" value={authUsername}
+                onChange={(e) => setAuthUsername(e.target.value)}
+                placeholder="Enter your username" maxLength={20} required
+              />
+            )}
           </div>
+
+          {authTab === 'signup' && (
+            <div className="form-group" style={{ textAlign: 'left' }}>
+              <label className="form-label">Email</label>
+              <input
+                type="email" className="text-input" value={authEmail}
+                onChange={(e) => setAuthEmail(e.target.value)}
+                placeholder="Enter your email" required
+              />
+            </div>
+          )}
 
           <div className="form-group" style={{ textAlign: 'left' }}>
             <label className="form-label">Password</label>
@@ -113,6 +142,27 @@ export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, 
                   />
                 ))}
               </div>
+            </div>
+          )}
+
+          {authTab === 'login' && (
+            <div style={{ textAlign: 'center', marginTop: '8px', marginBottom: '-4px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Don't have an account?{' '}
+                <button type="button" onClick={() => { setAuthTab('signup'); setLocalError(''); }} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px', fontWeight: '600', padding: 0, textDecoration: 'underline' }}>
+                  Sign up
+                </button>
+              </span>
+            </div>
+          )}
+          {authTab === 'signup' && (
+            <div style={{ textAlign: 'center', marginTop: '8px', marginBottom: '-4px' }}>
+              <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                Already have an account?{' '}
+                <button type="button" onClick={() => { setAuthTab('login'); setLocalError(''); }} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px', fontWeight: '600', padding: 0, textDecoration: 'underline' }}>
+                  Log in
+                </button>
+              </span>
             </div>
           )}
 

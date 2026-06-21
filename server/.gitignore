@@ -1,3 +1,11 @@
 .env
+.env.local
+.env.*.local
 node_modules/
+dist/
+build/
+uploads/
+server.log
 *.log
+.DS_Store
+server/_test_upload.js

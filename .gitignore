@@ -84,3 +84,9 @@ mongod.lock
 *.p12
 *.jks
 *.keystore
+
+# Upload test script (dev only)
+server/_test_upload.js
+
+# Server uploads (user-uploaded files, local disk fallback)
+server/uploads/
