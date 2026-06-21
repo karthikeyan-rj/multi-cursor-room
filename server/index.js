@@ -54,7 +54,7 @@ const corsOptions = {
 
     return callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
   credentials: true
 };
 app.use(cors(corsOptions));
@@ -93,9 +93,37 @@ const io = new Server(server, {
 // Make io accessible to route handlers via req.app.get('io')
 app.set('io', io);
 
+// Socket.IO auth middleware: verify JWT on every connection/reconnection
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token;
+  if (!token) {
+    // Allow connection without token — user must provide token via join_room
+    // This preserves backward compatibility with existing clients
+    socket.user = null;
+    return next();
+  }
+  jwt.verify(token, JWT_SECRET, (err, decoded) => {
+    if (err) {
+      socket.user = null;
+      return next();
+    }
+    socket.user = {
+      userId: decoded.userId,
+      username: decoded.username || decoded.name || decoded.displayName || '',
+      email: decoded.email || ''
+    };
+    next();
+  });
+});
+
 // In-memory active users tracker (scoped by roomId)
 // Structure: { [roomId]: { [socketId]: { id, name, color, x, y } } }
 const activeUsers = {};
+
+// Global socket-to-user mapping (not room-scoped) for sending events to users
+// who may not be in a room (e.g. kicked user on dashboard receiving approval)
+// Structure: { [socketId]: { userId, username } | null }
+const socketUserMap = {};
 
 // HTTP REST API - Authentication Routes
 app.post('/api/auth/signup', async (req, res) => {
@@ -438,7 +466,32 @@ app.post('/api/rooms/:roomId/kick', authenticateToken, async (req, res) => {
     await db.kickUserFromRoom(room.id, targetUserId);
 
     const io = req.app.get('io');
-    io.to(room.id).emit('user_kicked', { roomId: room.roomId, userId: targetUserId });
+
+    // Emit to the kicked user's sockets directly
+    const roomSockets = activeUsers[room.id];
+    if (roomSockets) {
+      for (const [sid, user] of Object.entries(roomSockets)) {
+        if (user.userId === targetUserId) {
+          io.to(sid).emit('kicked-from-room', {
+            roomId: room.roomId,
+            reason: 'You were removed from this room by the owner.'
+          });
+          const kickedSocket = io.sockets.sockets.get(sid);
+          if (kickedSocket) {
+            kickedSocket.leave(room.id);
+          }
+          delete roomSockets[sid];
+        }
+      }
+      if (Object.keys(roomSockets).length === 0) {
+        delete activeUsers[room.id];
+      }
+    }
+
+    // Notify remaining members
+    io.to(room.id).emit('room-members-updated', { action: 'kicked', targetUserId });
+    // Remove kicked user's cursor from all remaining clients
+    io.to(room.id).emit('cursor-removed', { userId: targetUserId });
 
     res.json({ success: true, message: 'User removed from room.' });
   } catch (err) {
@@ -458,6 +511,22 @@ app.post('/api/rooms/:roomId/requests/:userId/approve', authenticateToken, async
       return res.status(403).json({ success: false, error: 'Only the room owner can approve requests.' });
     }
     await db.approveJoinRequest(room.id, req.user.userId, requesterUserId);
+
+    const io = req.app.get('io');
+    // Notify the requester via global socket map (they may not be in the room)
+    for (const [sid, userData] of Object.entries(socketUserMap)) {
+      if (userData && userData.userId === requesterUserId) {
+        io.to(sid).emit('join-request-approved', {
+          roomId: room.roomId,
+          roomInternalId: room.id,
+          message: 'Owner accepted your request. Joining room...'
+        });
+      }
+    }
+
+    // Refresh members panel in the room
+    io.to(room.id).emit('room-members-updated', { ownerId: room.ownerId });
+
     res.json({ success: true, message: 'User approved and can now join the room.' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -476,6 +545,21 @@ app.post('/api/rooms/:roomId/requests/:userId/reject', authenticateToken, async 
       return res.status(403).json({ success: false, error: 'Only the room owner can reject requests.' });
     }
     await db.rejectJoinRequest(room.id, req.user.userId, requesterUserId);
+
+    const io = req.app.get('io');
+    // Notify the requester via global socket map (they may not be in the room)
+    for (const [sid, userData] of Object.entries(socketUserMap)) {
+      if (userData && userData.userId === requesterUserId) {
+        io.to(sid).emit('join-request-rejected', {
+          roomId: room.roomId,
+          message: 'Owner rejected your request.'
+        });
+      }
+    }
+
+    // Refresh members panel (removes the request from pending list)
+    io.to(room.id).emit('room-members-updated', { ownerId: room.ownerId });
+
     res.json({ success: true, message: 'Request rejected.' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -546,24 +630,33 @@ io.on('connection', (socket) => {
   let currentRoomId = null;
 
   console.log(`🔌 User connected: ${socket.id}`);
+  socketUserMap[socket.id] = null;
 
   // User Joins a specific room
   socket.on('join_room', async ({ roomId, name, color, token }) => {
     try {
-      if (!token) {
-        socket.emit('error_message', 'Access denied: Authentication token missing.');
-        return;
+      // Use socket.user from auth middleware or decode token from event payload
+      let socketUser = socket.user;
+      if (!socketUser || !socketUser.userId) {
+        if (!token) {
+          socket.emit('error_message', 'Access denied: Authentication token missing.');
+          return;
+        }
+        try {
+          const decoded = jwt.verify(token, JWT_SECRET);
+          socketUser = {
+            userId: decoded.userId,
+            username: decoded.username || '',
+            email: decoded.email || ''
+          };
+        } catch (err) {
+          socket.emit('error_message', 'Access denied: Invalid or expired token.');
+          return;
+        }
       }
 
-      let decodedUser;
-      try {
-        decodedUser = jwt.verify(token, JWT_SECRET);
-      } catch (err) {
-        socket.emit('error_message', 'Access denied: Invalid or expired token.');
-        return;
-      }
-
-      const decodedUserId = decodedUser.userId;
+      const userId = socketUser.userId;
+      const username = socketUser.username;
 
       // Verify membership
       const room = await db.getRoomById(roomId);
@@ -575,8 +668,8 @@ io.on('connection', (socket) => {
       // Check membership if room has password hash
       if (room.passwordHash) {
         const isMember =
-          room.ownerId === decodedUserId ||
-          (room.participants && room.participants.some(p => p.userId === decodedUserId));
+          room.ownerId === userId ||
+          (room.participants && room.participants.some(p => p.userId === userId));
 
         if (!isMember) {
           socket.emit('error_message', 'Access denied: You are not authorized to join this room.');
@@ -585,31 +678,35 @@ io.on('connection', (socket) => {
       }
 
       // Check if user is kicked
-      const kicked = await db.isUserKicked(roomId, decodedUserId);
+      const kicked = await db.isUserKicked(roomId, userId);
       if (kicked) {
         socket.emit('error_message', 'Access denied: You were removed from this room by the owner.');
         return;
       }
 
       currentRoomId = roomId;
-      socket.userData = { userId: decodedUserId, username: decodedUser.username };
+      socket.userData = { userId, username };
       socket.join(roomId);
+
+      // Add to global socket-user map
+      socketUserMap[socket.id] = { userId, username };
 
       // Add to active users
       if (!activeUsers[roomId]) {
         activeUsers[roomId] = {};
       }
 
+      const displayName = username || name || `Guest-${socket.id.substring(0, 4)}`;
       activeUsers[roomId][socket.id] = {
         id: socket.id,
-        userId: decodedUserId,
-        name: name || `Guest-${socket.id.substring(0, 4)}`,
+        userId,
+        name: displayName,
         color: color || '#aa3bff',
         x: -100,
         y: -100
       };
 
-      console.log(`👤 User "${name}" joined room "${roomId}" (Socket ID: ${socket.id})`);
+      console.log(`👤 User "${displayName}" joined room "${roomId}" (Socket ID: ${socket.id})`);
 
       // Load persistent historical room data from DB
       const drawings = await db.getDrawings(roomId);
@@ -631,6 +728,8 @@ io.on('connection', (socket) => {
 
       // Broadcast new user connection to others in the room
       socket.to(roomId).emit('user_joined', activeUsers[roomId][socket.id]);
+      // Broadcast updated members list to all (including the new user)
+      io.to(roomId).emit('room-members-updated', { ownerId: room.ownerId });
     } catch (err) {
       console.error('Error on join_room:', err);
       socket.emit('error_message', 'Failed to join room properly.');
@@ -789,6 +888,7 @@ io.on('connection', (socket) => {
   // Board Color
   socket.on('board_color_change', async ({ color }) => {
     if (!currentRoomId) return;
+    if (color !== null && !/^#[0-9A-Fa-f]{6}$/.test(color)) return;
     io.to(currentRoomId).emit('board_color_changed', { color });
     try {
       await db.setBoardColor(currentRoomId, color);
@@ -869,6 +969,7 @@ io.on('connection', (socket) => {
     if (currentRoomId && activeUsers[currentRoomId] && activeUsers[currentRoomId][socket.id]) {
       const user = activeUsers[currentRoomId][socket.id];
       socket.to(currentRoomId).emit('user_left', socket.id);
+      io.to(currentRoomId).emit('room-members-updated', {});
       delete activeUsers[currentRoomId][socket.id];
       socket.leave(currentRoomId);
       console.log(`👤 User "${user.name}" left room "${currentRoomId}" manually`);
@@ -879,9 +980,58 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Kick user from room (owner only, via socket)
+  socket.on('kick-user', async ({ roomId, targetUserId }) => {
+    try {
+      const room = await db.getRoomById(roomId);
+      if (!room) {
+        socket.emit('error_message', 'Room not found.');
+        return;
+      }
+      if (room.ownerId !== socket.userData?.userId) {
+        socket.emit('error_message', 'Only the room owner can kick users.');
+        return;
+      }
+      if (targetUserId === socket.userData?.userId) {
+        socket.emit('error_message', 'You cannot kick yourself.');
+        return;
+      }
+      await db.kickUserFromRoom(roomId, targetUserId);
+
+      // Kick from active users and emit to target sockets
+      const roomSockets = activeUsers[roomId];
+      if (roomSockets) {
+        for (const [sid, userData] of Object.entries(roomSockets)) {
+          if (userData.userId === targetUserId) {
+            io.to(sid).emit('kicked-from-room', {
+              roomId: room.roomId,
+              reason: 'You were removed from this room by the owner.'
+            });
+            const kickedSocket = io.sockets.sockets.get(sid);
+            if (kickedSocket) {
+              kickedSocket.leave(roomId);
+            }
+            delete roomSockets[sid];
+          }
+        }
+        if (Object.keys(roomSockets).length === 0) {
+          delete activeUsers[roomId];
+        }
+      }
+
+      // Notify remaining members
+      io.to(roomId).emit('room-members-updated', { action: 'kicked', targetUserId });
+      // Remove kicked user's cursor from all remaining clients
+      io.to(roomId).emit('cursor-removed', { userId: targetUserId });
+    } catch (err) {
+      console.error('Error on kick-user:', err);
+    }
+  });
+
   // Disconnection handler
   socket.on('disconnect', () => {
     console.log(`🔌 User disconnected: ${socket.id}`);
+    delete socketUserMap[socket.id];
 
     if (currentRoomId && activeUsers[currentRoomId] && activeUsers[currentRoomId][socket.id]) {
       const user = activeUsers[currentRoomId][socket.id];
@@ -889,6 +1039,9 @@ io.on('connection', (socket) => {
 
       delete activeUsers[currentRoomId][socket.id];
       console.log(`👤 User "${user.name}" left room "${currentRoomId}"`);
+
+      // Broadcast updated members list
+      io.to(currentRoomId).emit('room-members-updated', {});
 
       // Clean up empty room listings
       if (Object.keys(activeUsers[currentRoomId]).length === 0) {

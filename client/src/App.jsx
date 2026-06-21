@@ -343,7 +343,7 @@ function RoomRouteWrapper({
         });
         const data = await response.json();
         if (data.success) {
-          session.joinRoom(data.room.id, data.room.name, data.room.roomId, data.room.createdBy);
+          session.joinRoom(data.room.id, data.room.name, data.room.roomId, data.room.createdBy, data.room.boardColor);
           setLoading(false);
         } else {
           showToast(data.error || 'Failed to open room.', 'error');

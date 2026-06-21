@@ -16,7 +16,8 @@ export function isImageMime(mimeType) {
   return mimeType && mimeType.startsWith('image/');
 }
 
-export function getFileIcon(mimeType) {
+export function getFileIcon(mimeType, hasUrl = true) {
+  if (!hasUrl) return '⚠️';
   if (!mimeType) return '📄';
   if (mimeType.startsWith('image/')) return '🖼️';
   if (mimeType === 'application/pdf') return '📕';

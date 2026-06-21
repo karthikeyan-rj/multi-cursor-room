@@ -10,7 +10,11 @@ function generateStrokeId() {
 }
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
-export const socket = io(SERVER_URL);
+export const socket = io(SERVER_URL, {
+  auth: (cb) => cb({ token: localStorage.getItem('cursor_room_token') }),
+  transports: ['websocket', 'polling'],
+  withCredentials: true
+});
 
 export function useRoomSession({ userId, username, cursorColor, activeTool, brushColor, brushWidth, chatOpen, setActiveTool }) {
   const navigate = useNavigate();
@@ -26,6 +30,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   const [reactions, setReactions] = useState([]);
   const [myPos, setMyPos] = useState({ x: -100, y: -100 });
   const [isDrawing, setIsDrawing] = useState(false);
+  const strokePointsRef = useRef([]);
   const [currentStroke, setCurrentStroke] = useState([]);
   const [draggedNote, setDraggedNote] = useState(null);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -51,19 +56,17 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
     };
   }
 
-  const joinRoom = (roomId, roomName, displayRoomId, createdBy) => {
+  const joinRoom = (roomId, roomName, displayRoomId, createdBy, initialBoardColor) => {
     unlockMessageSound();
     setCurrentRoomId(roomId);
     setCurrentRoomName(roomName || roomId);
     setCurrentRoomDisplayId(displayRoomId || '');
     setRoomCreatedBy(createdBy || '');
+    if (initialBoardColor) setBoardColor(initialBoardColor);
     setDrawings([]);
     setStickyNotes([]);
     setChatHistory([]);
     setActiveTool?.('cursor');
-    socket.emit('join_room', {
-      roomId, name: username, color: cursorColor, token: localStorage.getItem('cursor_room_token')
-    });
   };
 
   const leaveRoom = () => {
@@ -192,12 +195,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
           msg.sender_email === currentUser.email;
 
         const soundMuted = localStorage.getItem('chat_muted') === 'true';
-        console.log("CHAT SOUND: incoming realtime message", msg);
-        console.log("CHAT SOUND: isOwnMessage", isOwnMessage);
-        console.log("CHAT SOUND: muted", soundMuted);
-        
         if (!isOwnMessage && !soundMuted) {
-          console.log("CHAT SOUND: playing");
           playMessageSound();
         }
       }
@@ -217,12 +215,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
           fileMsg.sender_email === currentUser.email;
 
         const soundMuted = localStorage.getItem('chat_muted') === 'true';
-        console.log("CHAT SOUND: incoming realtime message", fileMsg);
-        console.log("CHAT SOUND: isOwnMessage", isOwnMessage);
-        console.log("CHAT SOUND: muted", soundMuted);
-        
         if (!isOwnMessage && !soundMuted) {
-          console.log("CHAT SOUND: playing");
           playMessageSound();
         }
       }
@@ -246,12 +239,47 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       navigate('/dashboard');
     });
 
+    socket.on('cursor-removed', ({ userId: removedUserId }) => {
+      setRemoteCursors(prev => {
+        const updated = { ...prev };
+        for (const key of Object.keys(updated)) {
+          if (String(updated[key]?.userId) === String(removedUserId) || String(key) === String(removedUserId)) {
+            delete updated[key];
+          }
+        }
+        return updated;
+      });
+    });
+
     socket.on('user_kicked', ({ roomId, userId: targetUserId }) => {
       if (targetUserId === localStorage.getItem('cursor_room_userId') || targetUserId === userId) {
         showToast('You were removed from this room by the owner.', 'error');
         leaveRoom();
         navigate('/dashboard');
       }
+    });
+
+    socket.on('kicked-from-room', ({ roomId, reason }) => {
+      const myUserId = localStorage.getItem('cursor_room_userId') || userId;
+      showToast(reason || 'You were removed from this room by the owner.', 'error');
+      leaveRoom();
+      navigate('/dashboard');
+    });
+
+    socket.on('join-request-approved', ({ roomId, roomInternalId, message }) => {
+      showToast(message || 'Owner accepted your request.', 'success');
+      // Navigate to the room using the internal ID
+      navigate(`/room/${roomId}`);
+    });
+
+    socket.on('join-request-rejected', ({ message }) => {
+      showToast(message || 'Owner rejected your request.', 'error');
+    });
+
+    localStorage.setItem('cursor_room_userId', userId);
+
+    socket.emit('join_room', {
+      roomId: currentRoomId, name: username, color: cursorColor, token: localStorage.getItem('cursor_room_token')
     });
 
     return () => {
@@ -276,13 +304,38 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       socket.off('reaction_received');
       socket.off('error_message');
       socket.off('room_deleted');
+      socket.off('cursor-removed');
       socket.off('user_kicked');
+      socket.off('kicked-from-room');
     };
   }, [currentRoomId]);
+
+  // Global socket listeners (not gated by currentRoomId)
+  useEffect(() => {
+    const onApproved = ({ roomId, message }) => {
+      showToast(message || 'Owner accepted your request.', 'success');
+      navigate(`/room/${roomId}`);
+    };
+    const onRejected = ({ message }) => {
+      showToast(message || 'Owner rejected your request.', 'error');
+    };
+    socket.on('join-request-approved', onApproved);
+    socket.on('join-request-rejected', onRejected);
+    return () => {
+      socket.off('join-request-approved', onApproved);
+      socket.off('join-request-rejected', onRejected);
+    };
+  }, [navigate]);
+
+  const lastCursorEmitRef = useRef(0);
 
   useEffect(() => {
     if (!currentRoomId) return;
     const handleMouseMove = (e) => {
+      const now = Date.now();
+      if (now - lastCursorEmitRef.current < 40) return;
+      lastCursorEmitRef.current = now;
+
       const x = e.clientX, y = e.clientY;
       setMyPos({ x, y });
       socket.emit('cursor_move', { x, y });
@@ -322,6 +375,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
 
     if (activeTool === 'draw' || activeTool === 'eraser') {
       setIsDrawing(true);
+      strokePointsRef.current = [{ x, y }];
       setCurrentStroke([{ x, y }]);
     } else if (activeTool === 'line' || activeTool === 'rect' || activeTool === 'circle') {
       setIsDrawing(true);
@@ -345,8 +399,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
     const { x, y } = screenToBoard(e.clientX - rect.left, e.clientY - rect.top);
 
     if (isDrawing && (activeTool === 'draw' || activeTool === 'eraser')) {
-      const updatedStroke = [...currentStroke, { x, y }];
-      setCurrentStroke(updatedStroke);
+      strokePointsRef.current = [...strokePointsRef.current, { x, y }];
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       redraw(canvas, drawings, viewportRef.current);
@@ -360,8 +413,9 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       ctx.lineWidth = brushWidth;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.moveTo(updatedStroke[0].x, updatedStroke[0].y);
-      for (let i = 1; i < updatedStroke.length; i++) ctx.lineTo(updatedStroke[i].x, updatedStroke[i].y);
+      const pts = strokePointsRef.current;
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
       ctx.stroke();
       ctx.globalCompositeOperation = 'source-over';
     } else if (isDrawing && currentShape && (activeTool === 'line' || activeTool === 'rect' || activeTool === 'circle')) {
@@ -379,14 +433,16 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
     setIsDrawing(false);
 
     if (activeTool === 'draw' || activeTool === 'eraser') {
-      if (currentStroke.length > 1) {
+      const points = strokePointsRef.current;
+      strokePointsRef.current = [];
+      setCurrentStroke([]);
+      if (points.length > 1) {
         const isEraser = activeTool === 'eraser';
         const strokeId = generateStrokeId();
-        const stroke = { id: strokeId, points: currentStroke, color: brushColor, width: brushWidth, eraser: isEraser };
+        const stroke = { id: strokeId, points, color: brushColor, width: brushWidth, eraser: isEraser };
         setDrawings(prev => [...prev, stroke]);
-        socket.emit('draw_stroke', { id: strokeId, points: currentStroke, color: brushColor, width: brushWidth, eraser: isEraser });
+        socket.emit('draw_stroke', { id: strokeId, points, color: brushColor, width: brushWidth, eraser: isEraser });
       }
-      setCurrentStroke([]);
     } else if (currentShape && (activeTool === 'line' || activeTool === 'rect' || activeTool === 'circle')) {
       const shapeId = generateStrokeId();
       const shape = {

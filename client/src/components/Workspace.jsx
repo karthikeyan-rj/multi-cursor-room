@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { socket } from '../hooks/useRoomSession';
 import TopNav from './TopNav';
 import FloatingToolbar from './FloatingToolbar';
 import ChatDrawer from './ChatDrawer';
@@ -43,7 +44,43 @@ export default function Workspace({
   const [hideLocalCursor, setHideLocalCursor] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
+  const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const isLightBoard = useMemo(() => boardColor ? getLuminance(boardColor) > 0.55 : false, [boardColor]);
+
+  const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+
+  const fetchPendingRequestsCount = useCallback(async () => {
+    if (!currentRoomDisplayId) return;
+    try {
+      const token = localStorage.getItem('cursor_room_token');
+      const membersRes = await fetch(`${SERVER_URL}/api/rooms/${currentRoomDisplayId}/members`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!membersRes.ok) return;
+      const membersData = await membersRes.json();
+      if (membersData.success) {
+        // Only owner cares about pending requests
+        if (String(membersData.ownerId) !== String(userId)) {
+          setPendingRequestsCount(0);
+          return;
+        }
+        const pending = (membersData.joinRequests || []).filter(r => r.status === 'pending').length;
+        setPendingRequestsCount(pending);
+      }
+    } catch (err) {
+      // Silently fail
+    }
+  }, [currentRoomDisplayId, userId, SERVER_URL]);
+
+  useEffect(() => {
+    fetchPendingRequestsCount();
+  }, [fetchPendingRequestsCount]);
+
+  useEffect(() => {
+    const handler = () => fetchPendingRequestsCount();
+    socket.on('room-members-updated', handler);
+    return () => { socket.off('room-members-updated', handler); };
+  }, [fetchPendingRequestsCount]);
 
   const handleLeaveRoom = () => {
     setShowLeaveConfirm(false);
@@ -108,6 +145,7 @@ export default function Workspace({
         isLightBoard={isLightBoard}
         onToggleMembers={() => setMembersOpen(v => !v)}
         membersOpen={membersOpen}
+        pendingRequestsCount={pendingRequestsCount}
       />
 
       <canvas

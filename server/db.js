@@ -28,9 +28,15 @@ async function initDb() {
   console.log('✅ Connected successfully to MongoDB Atlas!');
 
   // Indexes for efficient queries (_id is automatically unique)
+  await db.collection('rooms').createIndex({ ownerId: 1 });
+  await db.collection('rooms').createIndex({ 'participants.userId': 1 });
+  await db.collection('rooms').createIndex({ 'kickedUsers.userId': 1 });
+  await db.collection('rooms').createIndex({ 'joinRequests.userId': 1 });
   await db.collection('drawings').createIndex({ room_id: 1, created_at: 1 });
+  await db.collection('drawings').createIndex({ room_id: 1, stroke_id: 1 });
   await db.collection('sticky_notes').createIndex({ room_id: 1 });
   await db.collection('chat_messages').createIndex({ room_id: 1, created_at: -1 });
+  await db.collection('file_messages').createIndex({ room_id: 1 });
 
   // Backfill any rooms that are missing a roomId before creating unique index
   const roomsMissingId = await db.collection('rooms').find({ roomId: { $exists: false } }).toArray();
@@ -100,6 +106,9 @@ async function getRooms(userId, email) {
     $or: [
       { ownerId: userId },
       { 'participants.userId': userId }
+    ],
+    $nor: [
+      { 'kickedUsers.userId': userId }
     ]
   }).sort({ createdAt: 1, created_at: 1 }).toArray();
 
@@ -210,6 +219,7 @@ async function createRoom(id, roomName, passwordHash, ownerId, ownerEmail, owner
     ownerId,
     ownerEmail,
     ownerName,
+    boardColor: '#000000',
     createdAt: now,
     created_at: now,
     participants: [
@@ -222,8 +232,19 @@ async function createRoom(id, roomName, passwordHash, ownerId, ownerEmail, owner
 
 async function setBoardColor(roomId, color) {
   await db.collection('rooms').updateOne(
-    { roomId },
+    { $or: [{ _id: roomId }, { id: roomId }] },
     { $set: { boardColor: color } }
+  );
+}
+
+// Helper: resolve a display-safe username from various possible field names
+function getSafeUsername(user) {
+  return (
+    user?.username ||
+    user?.name ||
+    user?.displayName ||
+    (user?.email ? user.email.split('@')[0] : null) ||
+    'User'
   );
 }
 
@@ -257,9 +278,24 @@ async function addRoomMember(roomId, userId, email, username) {
     'participants.userId': userId
   });
   if (existing) return;
+
+  // Resolve authoritative username from users collection if not provided
+  let finalUsername = username;
+  if (!finalUsername) {
+    try {
+      const userDoc = await db.collection('users').findOne(
+        { _id: new ObjectId(userId) },
+        { projection: { username: 1, name: 1, displayName: 1, email: 1 } }
+      );
+      finalUsername = getSafeUsername(userDoc);
+    } catch (_) {
+      finalUsername = email ? email.split('@')[0] : 'User';
+    }
+  }
+
   await db.collection('rooms').updateOne(
     { _id: roomId },
-    { $push: { participants: { userId, email, username, joinedAt: new Date() } } }
+    { $push: { participants: { userId, email, username: finalUsername, joinedAt: new Date() } } }
   );
 }
 
@@ -387,6 +423,7 @@ async function saveFileMessage(roomId, senderName, fileName, originalName, mimeT
     room_id: roomId, sender_name: senderName, type: 'file',
     file_name: fileName, original_name: originalName,
     mime_type: mimeType, size, url,
+    fileUrl: url, fileName: originalName, fileType: mimeType, fileSize: size,
     cloudinary_public_id: cloudinaryPublicId,
     created_at: new Date()
   };
@@ -511,6 +548,20 @@ async function addJoinRequest(roomId, userId, email, username) {
     { _id: roomId, 'joinRequests.userId': userId }
   );
   if (existing) return false;
+
+  let finalUsername = username;
+  if (!finalUsername) {
+    try {
+      const userDoc = await db.collection('users').findOne(
+        { _id: new ObjectId(userId) },
+        { projection: { username: 1, name: 1, displayName: 1, email: 1 } }
+      );
+      finalUsername = getSafeUsername(userDoc);
+    } catch (_) {
+      finalUsername = email ? email.split('@')[0] : 'User';
+    }
+  }
+
   await db.collection('rooms').updateOne(
     { _id: roomId },
     {
@@ -518,7 +569,7 @@ async function addJoinRequest(roomId, userId, email, username) {
         joinRequests: {
           userId,
           email,
-          username,
+          username: finalUsername,
           requestedAt: new Date(),
           status: 'pending'
         }
@@ -529,11 +580,32 @@ async function addJoinRequest(roomId, userId, email, username) {
 }
 
 async function approveJoinRequest(roomId, userId, requesterUserId) {
+  const room = await db.collection('rooms').findOne(
+    { _id: roomId, 'joinRequests.userId': requesterUserId },
+    { projection: { 'joinRequests.$': 1 } }
+  );
+  const reqData = room?.joinRequests?.[0] || {};
+  const requesterEmail = reqData.email || '';
+  let requesterUsername = reqData.username;
+
+  // Always fetch authoritative username from users collection
+  if (!requesterUsername) {
+    try {
+      const userDoc = await db.collection('users').findOne(
+        { _id: new ObjectId(requesterUserId) },
+        { projection: { username: 1, name: 1, displayName: 1, email: 1 } }
+      );
+      requesterUsername = getSafeUsername(userDoc);
+    } catch (_) {
+      requesterUsername = getSafeUsername(reqData);
+    }
+  }
+
   const result = await db.collection('rooms').updateOne(
     { _id: roomId },
     {
       $pull: { kickedUsers: { userId: requesterUserId }, joinRequests: { userId: requesterUserId } },
-      $push: { participants: { userId: requesterUserId, joinedAt: new Date() } }
+      $push: { participants: { userId: requesterUserId, email: requesterEmail, username: requesterUsername, joinedAt: new Date() } }
     }
   );
   return result.modifiedCount > 0;

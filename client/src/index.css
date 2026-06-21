@@ -1331,6 +1331,13 @@ body {
 .file-message:hover {
   background: rgba(255, 255, 255, 0.07);
 }
+.file-message--broken {
+  opacity: 0.7;
+  cursor: default;
+}
+.file-message--broken:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
 
 .file-message-thumb {
   width: 40px;
@@ -1691,6 +1698,18 @@ body {
   justify-content: center;
   padding: 0 3px;
   box-shadow: 0 0 6px rgba(239,68,68,0.6);
+}
+
+/* Members notification dot (red dot when pending join requests exist) */
+.members-notification-dot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239,68,68,0.8);
 }
 
 /* Avatar overflow indicator */
@@ -2168,6 +2187,12 @@ body {
 
 .chat-on-light-board .file-message:hover {
   background: rgba(255, 255, 255, 0.32);
+}
+.chat-on-light-board .file-message--broken {
+  opacity: 0.6;
+}
+.chat-on-light-board .file-message--broken:hover {
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .chat-on-light-board .file-message-name {

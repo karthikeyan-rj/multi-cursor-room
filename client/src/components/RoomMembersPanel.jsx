@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { showToast } from '../utils/toast';
+import { socket } from '../hooks/useRoomSession';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
 
@@ -50,6 +51,12 @@ export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, use
 
   useEffect(() => {
     fetchMembers();
+  }, [fetchMembers]);
+
+  useEffect(() => {
+    const handler = () => fetchMembers();
+    socket.on('room-members-updated', handler);
+    return () => { socket.off('room-members-updated', handler); };
   }, [fetchMembers]);
 
   const isOwner = isSameUser({ userId }, { userId: ownerId });
@@ -112,9 +119,11 @@ export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, use
     }
   };
 
-  const isUserOnline = (memberUserId) => {
-    return Object.values(remoteCursors).some(u => String(u.userId) === String(memberUserId));
-  };
+  const onlineUserIds = useMemo(() => {
+    return new Set(Object.values(remoteCursors).map(u => String(u.userId)));
+  }, [remoteCursors]);
+
+  const isUserOnline = (memberUserId) => onlineUserIds.has(String(memberUserId));
 
   const otherParticipants = members.filter(m => !isSameUser({ userId: m.userId }, { userId: ownerId }));
 

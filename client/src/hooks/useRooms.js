@@ -37,7 +37,22 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
       if (roomId) setRooms(prev => prev.filter(r => r.id !== roomId && r.roomId !== roomId));
     };
     socket.on('room_removed', handler);
-    return () => { socket.off('room_removed', handler); };
+
+    const kickedHandler = ({ roomId }) => {
+      if (roomId) {
+        setRooms(prev => prev.filter(r => {
+          const publicId = String(r.roomId || r.publicRoomId || '').trim();
+          const internalId = String(r.id || r._id || '').trim();
+          return publicId !== roomId && internalId !== roomId;
+        }));
+      }
+    };
+    socket.on('kicked-from-room', kickedHandler);
+
+    return () => {
+      socket.off('room_removed', handler);
+      socket.off('kicked-from-room', kickedHandler);
+    };
   }, []);
 
   const handleCreateRoom = async (name, password) => {
