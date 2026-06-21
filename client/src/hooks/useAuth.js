@@ -27,7 +27,9 @@ export function useAuth() {
         });
         const data = await response.json();
       if (data.success) {
-        localStorage.setItem('cursor_room_token', data.token);
+        if (data.token) {
+          localStorage.setItem('cursor_room_token', data.token);
+        }
         setCurrentUser(data.user);
         setUserId(data.user.userId);
         setUsername(data.user.username);
@@ -102,6 +104,7 @@ export function useAuth() {
 
   const handleLogout = (onLeaveRoom) => {
     localStorage.removeItem('cursor_room_token');
+    localStorage.removeItem('redirectAfterLogin');
     setCurrentUser(null);
     setUserId('');
     setUsername('');
@@ -130,7 +133,7 @@ export function useAuth() {
   return {
     currentUser, authError, authLoading, authBusy,
     userId, username, cursorColor, brushColor, setBrushColor,
-    brushWidth, setBrushWidth,
+    brushWidth, setBrushWidth, setUsername, setCursorColor, setCurrentUser,
     handleSignup, handleLogin, handleLogout, handleColorChange
   };
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import TopNav from './TopNav';
 import FloatingToolbar from './FloatingToolbar';
 import ChatDrawer from './ChatDrawer';
+import RoomMembersPanel from './RoomMembersPanel';
 import StickyNote from './StickyNote';
 import RemoteCursorOverlay from './RemoteCursorOverlay';
 import CursorTrail from './CursorTrail';
@@ -25,7 +26,7 @@ function isNativeCursorElement(target) {
 }
 
 export default function Workspace({
-  currentRoomName, currentRoomDisplayId, currentRoomId, userId, roomCreatedBy, roomOwnerId, remoteCursors, stickyNotes, chatHistory,
+  currentRoomName, currentRoomDisplayId, currentRoomId, userId, userEmail, roomCreatedBy, roomOwnerId, remoteCursors, stickyNotes, chatHistory,
   reactions, unreadCount, myPos, activeTool, brushColor, brushWidth, chatOpen, chatInput,
   username, cursorColor, canvasRef, textInput, textInputRef,
   onLeaveRoom, onDeleteRoom, onSetActiveTool, onSetBrushColor, onSetBrushWidth,
@@ -41,6 +42,7 @@ export default function Workspace({
   const [tempText, setTempText] = useState('');
   const [hideLocalCursor, setHideLocalCursor] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [membersOpen, setMembersOpen] = useState(false);
   const isLightBoard = useMemo(() => boardColor ? getLuminance(boardColor) > 0.55 : false, [boardColor]);
 
   const handleLeaveRoom = () => {
@@ -88,7 +90,9 @@ export default function Workspace({
       <TopNav
         roomName={currentRoomName}
         roomDisplayId={currentRoomDisplayId}
+        roomInternalId={currentRoomId}
         userId={userId}
+        userEmail={userEmail}
         roomOwnerId={roomOwnerId}
         username={username}
         roomCreatedBy={roomCreatedBy}
@@ -102,6 +106,8 @@ export default function Workspace({
         onDeleteRoom={onDeleteRoom}
         onCopy={onCopy}
         isLightBoard={isLightBoard}
+        onToggleMembers={() => setMembersOpen(v => !v)}
+        membersOpen={membersOpen}
       />
 
       <canvas
@@ -212,6 +218,18 @@ export default function Workspace({
         onCancelReply={onCancelReply}
       />
 
+      {membersOpen && (
+        <RoomMembersPanel
+          roomDisplayId={currentRoomDisplayId}
+          userId={userId}
+          userEmail={userEmail}
+          username={username}
+          cursorColor={cursorColor}
+          remoteCursors={remoteCursors}
+          onClose={() => setMembersOpen(false)}
+        />
+      )}
+
       <div style={{ display: hideLocalCursor ? 'none' : undefined }}>
         <CursorTrail color={cursorColor} />
       </div>
@@ -230,7 +248,7 @@ export default function Workspace({
 
       {showLeaveConfirm && (
         <ConfirmationModal
-          message="Leave this room and go back to lobby?"
+          message="Leave this room and go back to Dashboard?"
           confirmLabel="Leave Room"
           onConfirm={handleLeaveRoom}
           onCancel={() => setShowLeaveConfirm(false)}

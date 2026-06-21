@@ -4,7 +4,7 @@ import FileMessage from './FileMessage';
 import ChatEmojiPicker from './ChatEmojiPicker';
 import { useClickOutside } from '../utils/useClickOutside';
 import useResizablePanel from '../hooks/useResizablePanel';
-import { unlockMessageSound } from '../utils/sound';
+import { unlockAudio } from '../utils/sound';
 
 export default function ChatDrawer({ open, remoteCursors, username, userId, chatHistory, chatInput, onChatInput, onSendChat, onClose, roomId, isLightBoard, replyingTo, onSetReplyTarget, onCancelReply }) {
   const listRef = useRef(null);
@@ -61,7 +61,7 @@ export default function ChatDrawer({ open, remoteCursors, username, userId, chat
   }, [onSetReplyTarget]);
 
   const toggleMute = useCallback(async () => {
-    await unlockMessageSound();
+    await unlockAudio();
     const next = !muted;
     setMuted(next);
     localStorage.setItem('chat_muted', next ? 'true' : '');

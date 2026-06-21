@@ -70,14 +70,21 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
         body: JSON.stringify({ roomId, password })
       });
       const data = await response.json();
+      if (data.requiresApproval) {
+        showToast(data.message || 'Access request sent to room owner.', 'success');
+        return true;
+      }
       if (data.success) {
         onJoinRoom(data.room.id, data.room.name, data.room.roomId, data.room.createdBy);
+        return true;
       } else {
         setJoinError(data.error || 'Failed to join room.');
+        return false;
       }
     } catch (err) {
       console.error('Join room fetch error:', err);
       setJoinError(`Cannot reach server at ${SERVER_URL}. Is the backend running? (${err.message})`);
+      return false;
     }
   };
 
@@ -92,7 +99,10 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
         body: JSON.stringify({ roomId: promptRoom.roomId, password })
       });
       const data = await response.json();
-      if (data.success) {
+      if (data.requiresApproval) {
+        setPromptRoom(null);
+        showToast(data.message || 'Access request sent to room owner.', 'success');
+      } else if (data.success) {
         setPromptRoom(null);
         onJoinRoom(data.room.id, data.room.name, data.room.roomId, data.room.createdBy);
       } else {
@@ -114,32 +124,72 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
     setPromptError('');
   };
 
-  const handleDeleteRoom = async (slugOrId) => {
-    if (!slugOrId) {
+  const getPublicRoomId = (roomObj) => {
+    return String(roomObj?.roomId || roomObj?.publicRoomId || "").trim();
+  };
+
+  const handleDeleteRoom = async (roomIdentifierOrObj) => {
+    let roomId = "";
+    let fallbackId = "";
+    if (typeof roomIdentifierOrObj === 'object' && roomIdentifierOrObj !== null) {
+      roomId = getPublicRoomId(roomIdentifierOrObj);
+      fallbackId = String(roomIdentifierOrObj?.id || roomIdentifierOrObj?._id || "").trim();
+      console.log("DELETE SOURCE:", "dashboard");
+      console.log("FULL ROOM OBJECT:", roomIdentifierOrObj);
+      console.log("room.roomId:", roomIdentifierOrObj?.roomId);
+      console.log("room.id:", roomIdentifierOrObj?.id);
+      console.log("room._id:", roomIdentifierOrObj?._id);
+      console.log("room.slug:", roomIdentifierOrObj?.slug);
+      console.log("room.name:", roomIdentifierOrObj?.name);
+    } else {
+      roomId = String(roomIdentifierOrObj || "").trim();
+      console.log("DELETE SOURCE:", "workspace");
+      console.log("DELETE IDENTIFIER:", roomId);
+    }
+
+    if (!roomId) {
       console.error('Delete room called with empty identifier');
       showToast('Cannot delete: missing room identifier.', 'error');
-      return;
+      return false;
     }
-    try {
+
+    const doDelete = async (id) => {
+      const url = `${SERVER_URL}/api/rooms/${id}`;
+      console.log("DELETE URL:", url);
       const token = localStorage.getItem('cursor_room_token');
       if (!token) {
         showToast('Authentication required.', 'error');
-        return;
+        return false;
       }
-      const response = await fetch(`${SERVER_URL}/api/rooms/${slugOrId}`, {
+      const res = await fetch(url, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      const data = await response.json();
+      return await res.json();
+    };
+
+    try {
+      let data = await doDelete(roomId);
       if (data.success) {
         showToast('Room deleted.', 'success');
-        setRooms(prev => prev.filter(r => r.id !== slugOrId && r.roomId !== slugOrId));
-      } else {
-        showToast(data.error || 'Failed to delete room.', 'error');
+        setRooms(prev => prev.filter(r => String(r.roomId || r.publicRoomId || "").trim() !== roomId && String(r.id || "").trim() !== roomId));
+        return true;
       }
+      if (data.error && data.error.toLowerCase().includes('not found') && fallbackId && fallbackId !== roomId) {
+        console.log("DELETE FALLBACK: trying with id:", fallbackId);
+        data = await doDelete(fallbackId);
+        if (data.success) {
+          showToast('Room deleted.', 'success');
+          setRooms(prev => prev.filter(r => String(r.roomId || r.publicRoomId || "").trim() !== roomId && String(r.id || "").trim() !== fallbackId));
+          return true;
+        }
+      }
+      showToast(data.error || 'Failed to delete room.', 'error');
+      return false;
     } catch (err) {
       console.error('Delete room error:', err);
       showToast('Failed to delete room.', 'error');
+      return false;
     }
   };
 

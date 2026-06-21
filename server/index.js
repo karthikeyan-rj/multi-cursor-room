@@ -54,7 +54,7 @@ const corsOptions = {
 
     return callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST', 'DELETE'],
+  methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   credentials: true
 };
 app.use(cors(corsOptions));
@@ -201,6 +201,57 @@ app.post('/api/auth/color', authenticateToken, async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, error: 'Current password and new password are required' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, error: 'New password must be at least 6 characters' });
+    }
+    const user = await db.getUserByEmail(req.user.email);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    const passwordMatch = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!passwordMatch) {
+      return res.status(400).json({ success: false, error: 'Current password is incorrect' });
+    }
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+    await db.updateUserPassword(user.id, newPasswordHash);
+    res.json({ success: true, message: 'Password changed successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.patch('/api/auth/profile', authenticateToken, async (req, res) => {
+  try {
+    const { username, color } = req.body;
+    if (!username && !color) {
+      return res.status(400).json({ success: false, error: 'No fields to update' });
+    }
+    if (username && (username.trim().length < 3 || username.trim().length > 20)) {
+      return res.status(400).json({ success: false, error: 'Username must be between 3 and 20 characters' });
+    }
+    const updates = {};
+    if (username) updates.username = username.trim();
+    if (color) updates.color = color;
+    const user = await db.updateUserProfile(req.user.userId, updates);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    res.json({
+      success: true,
+      user: { userId: user.id, username: user.username, email: user.email, color: user.color }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 app.get('/api/rooms', authenticateToken, async (req, res) => {
   try {
     const rooms = await db.getRooms(req.user.userId, req.user.email);
@@ -223,6 +274,49 @@ app.get('/api/rooms', authenticateToken, async (req, res) => {
     res.json({
       success: true,
       rooms: roomsWithCounts
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/rooms/:roomId', authenticateToken, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    if (!roomId) {
+      return res.status(400).json({ success: false, error: 'Room ID is required.' });
+    }
+    const room = await db.getRoomByRoomId(roomId.trim());
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+
+    const isMember = room.ownerId === req.user.userId ||
+      (room.participants && room.participants.some(p => p.userId === req.user.userId));
+
+    if (!isMember) {
+      return res.status(403).json({ success: false, error: 'Access denied. You do not have access to this room.' });
+    }
+
+    const kicked = await db.isUserKicked(room.id, req.user.userId);
+    if (kicked) {
+      return res.status(403).json({ success: false, error: 'Access denied. You were removed from this room by the owner.' });
+    }
+
+    const safeRoom = {
+      id: room.id,
+      roomId: room.roomId,
+      name: room.name,
+      roomName: room.roomName || room.name,
+      createdBy: room.ownerName,
+      ownerId: room.ownerId,
+      createdAt: room.createdAt || room.created_at,
+      boardColor: room.boardColor || null
+    };
+
+    res.json({
+      success: true,
+      room: safeRoom
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -294,8 +388,19 @@ app.post('/api/rooms/join', authenticateToken, async (req, res) => {
     if (room.passwordHash) {
       const match = await bcrypt.compare(password, room.passwordHash);
       if (!match) {
-        return res.status(400).json({ success: false, error: 'Incorrect room password.' });
+        return res.status(401).json({ success: false, error: 'Incorrect room password.' });
       }
+    }
+
+    // Check if user is kicked
+    const isKicked = await db.isUserKicked(room.id, req.user.userId);
+    if (isKicked) {
+      await db.addJoinRequest(room.id, req.user.userId, req.user.email, req.user.username);
+      return res.status(202).json({
+        success: true,
+        requiresApproval: true,
+        message: 'Access request sent to room owner.'
+      });
     }
 
     await db.addRoomMember(room.id, req.user.userId, req.user.email, req.user.username);
@@ -312,19 +417,124 @@ app.post('/api/rooms/join', authenticateToken, async (req, res) => {
   }
 });
 
-// Delete room (owner only, from lobby)
-app.delete('/api/rooms/:slug', authenticateToken, async (req, res) => {
+// Kick a user from the room (owner only)
+app.post('/api/rooms/:roomId/kick', authenticateToken, async (req, res) => {
   try {
-    const room = await db.getRoomById(req.params.slug);
+    const { roomId } = req.params;
+    const { userId: targetUserId } = req.body;
+    if (!roomId || !targetUserId) {
+      return res.status(400).json({ success: false, error: 'Room ID and target userId are required.' });
+    }
+    const room = await db.getRoomByRoomId(roomId.trim());
     if (!room) {
       return res.status(404).json({ success: false, error: 'Room not found.' });
     }
     if (room.ownerId !== req.user.userId) {
+      return res.status(403).json({ success: false, error: 'Only the room owner can kick users.' });
+    }
+    if (targetUserId === req.user.userId) {
+      return res.status(400).json({ success: false, error: 'You cannot kick yourself.' });
+    }
+    await db.kickUserFromRoom(room.id, targetUserId);
+
+    const io = req.app.get('io');
+    io.to(room.id).emit('user_kicked', { roomId: room.roomId, userId: targetUserId });
+
+    res.json({ success: true, message: 'User removed from room.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Approve join request for a kicked user (owner only)
+app.post('/api/rooms/:roomId/requests/:userId/approve', authenticateToken, async (req, res) => {
+  try {
+    const { roomId, userId: requesterUserId } = req.params;
+    const room = await db.getRoomByRoomId(roomId.trim());
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+    if (room.ownerId !== req.user.userId) {
+      return res.status(403).json({ success: false, error: 'Only the room owner can approve requests.' });
+    }
+    await db.approveJoinRequest(room.id, req.user.userId, requesterUserId);
+    res.json({ success: true, message: 'User approved and can now join the room.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Reject join request for a kicked user (owner only)
+app.post('/api/rooms/:roomId/requests/:userId/reject', authenticateToken, async (req, res) => {
+  try {
+    const { roomId, userId: requesterUserId } = req.params;
+    const room = await db.getRoomByRoomId(roomId.trim());
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+    if (room.ownerId !== req.user.userId) {
+      return res.status(403).json({ success: false, error: 'Only the room owner can reject requests.' });
+    }
+    await db.rejectJoinRequest(room.id, req.user.userId, requesterUserId);
+    res.json({ success: true, message: 'Request rejected.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get room members and join requests (for the members panel)
+app.get('/api/rooms/:roomId/members', authenticateToken, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = await db.getRoomByRoomId(roomId.trim());
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+    const isMember = room.ownerId === req.user.userId ||
+      (room.participants && room.participants.some(p => p.userId === req.user.userId));
+    if (!isMember) {
+      return res.status(403).json({ success: false, error: 'Access denied.' });
+    }
+    const members = await db.getRoomMembers(room.id);
+    const joinRequests = await db.getJoinRequests(room.id);
+    res.json({
+      success: true,
+      ownerId: members.ownerId,
+      ownerName: members.ownerName,
+      participants: members.participants || [],
+      joinRequests: req.user.userId === room.ownerId ? joinRequests : []
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Delete room (owner only, from lobby or inside room)
+app.delete('/api/rooms/:roomId', authenticateToken, async (req, res) => {
+  try {
+    const roomId = String(req.params.roomId).trim();
+    console.log("DELETE ROUTE HIT");
+    console.log("req.params:", req.params);
+    console.log("DELETE PARAM:", req.params.roomId);
+    console.log("DELETE USER:", req.user?.userId, req.user?.email);
+    console.log("Trying delete lookup by public roomId:", roomId);
+
+    const room = await db.getRoomByRoomId(roomId);
+    
+    console.log("DELETE ROOM FOUND:", !!room);
+    console.log("DELETE ROOM OWNER:", room?.ownerId, room?.ownerEmail);
+
+    if (!room) {
+      return res.status(404).json({ success: false, error: 'Room not found.' });
+    }
+
+    if (room.ownerId !== req.user.userId) {
       return res.status(403).json({ success: false, error: 'Only the room owner can delete this room.' });
     }
-    await db.deleteRoom(req.params.slug);
-    io.to(req.params.slug).emit('room_deleted');
-    io.emit('room_removed', { roomId: req.params.slug });
+    
+    await db.deleteRoom(room.id);
+    io.to(room.id).emit('room_deleted');
+    io.emit('room_removed', { roomId: room.roomId });
     res.json({ success: true, message: 'Room deleted successfully.' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -372,6 +582,13 @@ io.on('connection', (socket) => {
           socket.emit('error_message', 'Access denied: You are not authorized to join this room.');
           return;
         }
+      }
+
+      // Check if user is kicked
+      const kicked = await db.isUserKicked(roomId, decodedUserId);
+      if (kicked) {
+        socket.emit('error_message', 'Access denied: You were removed from this room by the owner.');
+        return;
       }
 
       currentRoomId = roomId;
@@ -638,7 +855,7 @@ io.on('connection', (socket) => {
       }
 
       io.to(currentRoomId).emit('room_deleted');
-      io.emit('room_removed', { roomId: currentRoomId });
+      io.emit('room_removed', { roomId: room.roomId || currentRoomId, id: currentRoomId });
       await db.deleteRoom(currentRoomId);
       console.log(`🗑️ Room "${currentRoomId}" deleted by owner ${socket.userData?.username}`);
     } catch (err) {

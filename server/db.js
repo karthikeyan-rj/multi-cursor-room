@@ -1,4 +1,4 @@
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 require('dotenv').config();
 
 let client = null;
@@ -171,7 +171,28 @@ async function generateUniqueRoomId() {
 }
 
 async function getRoomByRoomId(roomId) {
-  const doc = await db.collection('rooms').findOne({ roomId });
+  if (!roomId) return null;
+  const cleanId = String(roomId).trim();
+  const doc = await db.collection('rooms').findOne({
+    $or: [
+      { roomId: cleanId },
+      { roomId: Number(cleanId) },
+      { publicRoomId: cleanId },
+      { publicRoomId: Number(cleanId) },
+      { _id: cleanId },
+      { id: cleanId }
+    ]
+  });
+  if (doc) {
+    if (!doc.roomId) {
+      doc.roomId = await generateUniqueRoomId();
+      await db.collection('rooms').updateOne({ _id: doc._id }, { $set: { roomId: doc.roomId } });
+    }
+    if (!doc.id) {
+      doc.id = doc._id;
+      await db.collection('rooms').updateOne({ _id: doc._id }, { $set: { id: doc._id } });
+    }
+  }
   return mapDoc(doc);
 }
 
@@ -207,15 +228,21 @@ async function setBoardColor(roomId, color) {
 }
 
 async function deleteRoom(id) {
-  // Find room by _id or id field, then use its stored id for cascade delete
+  if (!id) return false;
+  const cleanId = String(id).trim();
+  // Find room by _id, id, roomId, or publicRoomId
   const room = await db.collection('rooms').findOne({
     $or: [
-      { _id: id },
-      { id: id }
+      { _id: cleanId },
+      { id: cleanId },
+      { roomId: cleanId },
+      { roomId: Number(cleanId) },
+      { publicRoomId: cleanId },
+      { publicRoomId: Number(cleanId) }
     ]
   });
   if (!room) return false;
-  const roomSlug = room.id || id;
+  const roomSlug = room.id || room._id || id;
   await db.collection('rooms').deleteOne({ _id: room._id });
   await db.collection('drawings').deleteMany({ room_id: roomSlug });
   await db.collection('sticky_notes').deleteMany({ room_id: roomSlug });
@@ -300,20 +327,22 @@ async function saveStickyNote(id, roomId, x, y, text, color, creatorName) {
 }
 
 async function updateStickyNotePosition(id, x, y) {
-  const doc = await db.collection('sticky_notes').findOneAndUpdate(
+  const result = await db.collection('sticky_notes').findOneAndUpdate(
     { _id: id },
     { $set: { x, y } },
     { returnDocument: 'after' }
   );
+  const doc = result?.value || result;
   return mapDoc(doc);
 }
 
 async function updateStickyNoteText(id, text, color) {
-  const doc = await db.collection('sticky_notes').findOneAndUpdate(
+  const result = await db.collection('sticky_notes').findOneAndUpdate(
     { _id: id },
     { $set: { text, color } },
     { returnDocument: 'after' }
   );
+  const doc = result?.value || result;
   return mapDoc(doc);
 }
 
@@ -411,13 +440,127 @@ async function createUser(username, email, passwordHash, color) {
 
 async function updateUserColorByEmail(email, color) {
   const normalized = email.toLowerCase().trim();
-  const doc = await db.collection('users').findOneAndUpdate(
+  const result = await db.collection('users').findOneAndUpdate(
     { email: normalized },
     { $set: { color, updated_at: new Date() } },
     { returnDocument: 'after' }
   );
+  const doc = result?.value || result;
   if (!doc) return null;
   return { ...mapDoc(doc), id: doc._id.toString() };
+}
+
+async function updateUserPassword(userId, newPasswordHash) {
+  const result = await db.collection('users').findOneAndUpdate(
+    { _id: new ObjectId(userId) },
+    { $set: { password_hash: newPasswordHash, updated_at: new Date() } },
+    { returnDocument: 'after' }
+  );
+  const doc = result?.value || result;
+  if (!doc) return null;
+  return { ...mapDoc(doc), id: doc._id.toString() };
+}
+
+async function updateUserProfile(userId, updates) {
+  const allowed = {};
+  if (updates.username) allowed.username = updates.username;
+  if (updates.color) allowed.color = updates.color;
+  if (Object.keys(allowed).length === 0) return null;
+  allowed.updated_at = new Date();
+  const result = await db.collection('users').findOneAndUpdate(
+    { _id: new ObjectId(userId) },
+    { $set: allowed },
+    { returnDocument: 'after' }
+  );
+  const doc = result?.value || result;
+  if (!doc) return null;
+  return { ...mapDoc(doc), id: doc._id.toString() };
+}
+
+// ── Kick / Blocked / Join Request Operations ──────────────────────────────────
+
+async function kickUserFromRoom(roomId, targetUserId) {
+  await db.collection('rooms').updateOne(
+    { _id: roomId },
+    { $pull: { participants: { userId: targetUserId } } }
+  );
+  const now = new Date();
+  await db.collection('rooms').updateOne(
+    { _id: roomId },
+    {
+      $push: {
+        kickedUsers: {
+          userId: targetUserId,
+          kickedAt: now
+        }
+      }
+    }
+  );
+}
+
+async function isUserKicked(roomId, userId) {
+  const room = await db.collection('rooms').findOne(
+    { _id: roomId, 'kickedUsers.userId': userId },
+    { projection: { 'kickedUsers.$': 1 } }
+  );
+  return !!room;
+}
+
+async function addJoinRequest(roomId, userId, email, username) {
+  const existing = await db.collection('rooms').findOne(
+    { _id: roomId, 'joinRequests.userId': userId }
+  );
+  if (existing) return false;
+  await db.collection('rooms').updateOne(
+    { _id: roomId },
+    {
+      $push: {
+        joinRequests: {
+          userId,
+          email,
+          username,
+          requestedAt: new Date(),
+          status: 'pending'
+        }
+      }
+    }
+  );
+  return true;
+}
+
+async function approveJoinRequest(roomId, userId, requesterUserId) {
+  const result = await db.collection('rooms').updateOne(
+    { _id: roomId },
+    {
+      $pull: { kickedUsers: { userId: requesterUserId }, joinRequests: { userId: requesterUserId } },
+      $push: { participants: { userId: requesterUserId, joinedAt: new Date() } }
+    }
+  );
+  return result.modifiedCount > 0;
+}
+
+async function rejectJoinRequest(roomId, userId, requesterUserId) {
+  const result = await db.collection('rooms').updateOne(
+    { _id: roomId, 'joinRequests.userId': requesterUserId },
+    { $set: { 'joinRequests.$.status': 'rejected' } }
+  );
+  return result.modifiedCount > 0;
+}
+
+async function getJoinRequests(roomId) {
+  const room = await db.collection('rooms').findOne(
+    { _id: roomId },
+    { projection: { joinRequests: 1 } }
+  );
+  return room?.joinRequests || [];
+}
+
+async function getRoomMembers(roomId) {
+  const room = await db.collection('rooms').findOne(
+    { _id: roomId },
+    { projection: { participants: 1, ownerId: 1, ownerName: 1, ownerEmail: 1 } }
+  );
+  return room || { participants: [], ownerId: null, ownerName: null };
 }
 
 module.exports = {
@@ -448,5 +591,14 @@ module.exports = {
   getUserByEmail,
   getUserByUsername,
   createUser,
-  updateUserColorByEmail
+  updateUserColorByEmail,
+  kickUserFromRoom,
+  isUserKicked,
+  addJoinRequest,
+  approveJoinRequest,
+  rejectJoinRequest,
+  getJoinRequests,
+  getRoomMembers,
+  updateUserPassword,
+  updateUserProfile
 };

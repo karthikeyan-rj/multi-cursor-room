@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { showToast } from '../utils/toast';
 import { redraw, drawShapePreview } from '../utils/canvas';
@@ -12,6 +13,7 @@ const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
 export const socket = io(SERVER_URL);
 
 export function useRoomSession({ userId, username, cursorColor, activeTool, brushColor, brushWidth, chatOpen, setActiveTool }) {
+  const navigate = useNavigate();
   const [currentRoomId, setCurrentRoomId] = useState(null);
   const [currentRoomName, setCurrentRoomName] = useState('');
   const [currentRoomDisplayId, setCurrentRoomDisplayId] = useState('');
@@ -50,6 +52,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   }
 
   const joinRoom = (roomId, roomName, displayRoomId, createdBy) => {
+    unlockMessageSound();
     setCurrentRoomId(roomId);
     setCurrentRoomName(roomName || roomId);
     setCurrentRoomDisplayId(displayRoomId || '');
@@ -79,13 +82,17 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   useEffect(() => {
     if (!currentRoomId) return;
 
+    const hasLoadedInitialMessagesRef = { current: false };
+
     socket.on('room_data', ({ drawings, stickyNotes, chatHistory, fileMessages, roomCreatedBy, roomOwnerId, boardColor, activeUsers }) => {
+      unlockMessageSound();
       setDrawings(drawings.map(d => ({ ...d, id: d.stroke_id || d.id })));
       setStickyNotes(stickyNotes);
       const merged = [...(chatHistory || []), ...(fileMessages || [])].sort(
         (a, b) => new Date(a.created_at) - new Date(b.created_at)
       );
       setChatHistory(merged);
+      hasLoadedInitialMessagesRef.current = true;
       if (roomCreatedBy) setRoomCreatedBy(roomCreatedBy);
       if (roomOwnerId) setRoomOwnerId(roomOwnerId);
       if (boardColor) setBoardColor(boardColor);
@@ -176,8 +183,23 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       if (!chatOpenRef.current) {
         setUnreadCount(prev => prev + 1);
       }
-      if (msg.sender_id !== userId && localStorage.getItem('chat_muted') !== 'true') {
-        playMessageSound();
+      if (hasLoadedInitialMessagesRef.current) {
+        const currentUser = { userId, email: localStorage.getItem('cursor_room_email') || '' };
+        const isOwnMessage =
+          msg.senderId === currentUser.userId ||
+          msg.sender_id === currentUser.userId ||
+          msg.senderEmail === currentUser.email ||
+          msg.sender_email === currentUser.email;
+
+        const soundMuted = localStorage.getItem('chat_muted') === 'true';
+        console.log("CHAT SOUND: incoming realtime message", msg);
+        console.log("CHAT SOUND: isOwnMessage", isOwnMessage);
+        console.log("CHAT SOUND: muted", soundMuted);
+        
+        if (!isOwnMessage && !soundMuted) {
+          console.log("CHAT SOUND: playing");
+          playMessageSound();
+        }
       }
     });
 
@@ -186,8 +208,23 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       if (!chatOpenRef.current) {
         setUnreadCount(prev => prev + 1);
       }
-      if (fileMsg.sender_id !== userId && localStorage.getItem('chat_muted') !== 'true') {
-        playMessageSound();
+      if (hasLoadedInitialMessagesRef.current) {
+        const currentUser = { userId, email: localStorage.getItem('cursor_room_email') || '' };
+        const isOwnMessage =
+          fileMsg.senderId === currentUser.userId ||
+          fileMsg.sender_id === currentUser.userId ||
+          fileMsg.senderEmail === currentUser.email ||
+          fileMsg.sender_email === currentUser.email;
+
+        const soundMuted = localStorage.getItem('chat_muted') === 'true';
+        console.log("CHAT SOUND: incoming realtime message", fileMsg);
+        console.log("CHAT SOUND: isOwnMessage", isOwnMessage);
+        console.log("CHAT SOUND: muted", soundMuted);
+        
+        if (!isOwnMessage && !soundMuted) {
+          console.log("CHAT SOUND: playing");
+          playMessageSound();
+        }
       }
     });
 
@@ -200,11 +237,21 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
     socket.on('error_message', (msg) => {
       showToast(msg, 'error');
       leaveRoom();
+      navigate('/dashboard');
     });
 
     socket.on('room_deleted', () => {
       showToast('Room has been deleted by the creator.', 'error');
       leaveRoom();
+      navigate('/dashboard');
+    });
+
+    socket.on('user_kicked', ({ roomId, userId: targetUserId }) => {
+      if (targetUserId === localStorage.getItem('cursor_room_userId') || targetUserId === userId) {
+        showToast('You were removed from this room by the owner.', 'error');
+        leaveRoom();
+        navigate('/dashboard');
+      }
     });
 
     return () => {
@@ -229,6 +276,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       socket.off('reaction_received');
       socket.off('error_message');
       socket.off('room_deleted');
+      socket.off('user_kicked');
     };
   }, [currentRoomId]);
 
