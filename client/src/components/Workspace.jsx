@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { socket } from '../hooks/useRoomSession';
 import TopNav from './TopNav';
 import FloatingToolbar from './FloatingToolbar';
@@ -10,6 +10,7 @@ import CursorTrail from './CursorTrail';
 import BoardColorPicker from './BoardColorPicker';
 import ConfirmationModal from './ConfirmationModal';
 import { getLuminance } from '../utils/color';
+import { SERVER_URL } from '../config';
 
 function isNativeCursorElement(target) {
   if (!target || !target.tagName) return false;
@@ -45,9 +46,9 @@ export default function Workspace({
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
+  const [activityToasts, setActivityToasts] = useState([]);
+  const toastTimeoutsRef = useRef([]);
   const isLightBoard = useMemo(() => boardColor ? getLuminance(boardColor) > 0.55 : false, [boardColor]);
-
-  const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
 
   const fetchPendingRequestsCount = useCallback(async () => {
     if (!currentRoomDisplayId) return;
@@ -81,6 +82,24 @@ export default function Workspace({
     socket.on('room-members-updated', handler);
     return () => { socket.off('room-members-updated', handler); };
   }, [fetchPendingRequestsCount]);
+
+  useEffect(() => {
+    const handler = (activity) => {
+      const id = `${activity.type}-${activity.userId}-${Date.now()}`;
+      setActivityToasts((prev) => [...prev, { id, message: activity.message, type: activity.type }]);
+      const timeoutId = setTimeout(() => {
+        setActivityToasts((prev) => prev.filter((t) => t.id !== id));
+        toastTimeoutsRef.current = toastTimeoutsRef.current.filter((t) => t !== timeoutId);
+      }, 3500);
+      toastTimeoutsRef.current.push(timeoutId);
+    };
+    socket.on('room-activity', handler);
+    return () => {
+      socket.off('room-activity', handler);
+      toastTimeoutsRef.current.forEach(clearTimeout);
+      toastTimeoutsRef.current = [];
+    };
+  }, []);
 
   const handleLeaveRoom = () => {
     setShowLeaveConfirm(false);
@@ -147,6 +166,16 @@ export default function Workspace({
         membersOpen={membersOpen}
         pendingRequestsCount={pendingRequestsCount}
       />
+
+      {activityToasts.length > 0 && (
+        <div className="room-activity-toast-stack">
+          {activityToasts.map((toast) => (
+            <div key={toast.id} className={`room-activity-toast ${toast.type}`}>
+              {toast.message}
+            </div>
+          ))}
+        </div>
+      )}
 
       <canvas
         ref={canvasRef}
@@ -282,7 +311,7 @@ export default function Workspace({
         </svg>
       </div>
 
-      <RemoteCursorOverlay remoteCursors={remoteCursors} />
+      <RemoteCursorOverlay remoteCursors={remoteCursors} viewport={viewport} />
 
       {showLeaveConfirm && (
         <ConfirmationModal
@@ -296,7 +325,10 @@ export default function Workspace({
 
       {reactions.map(r => (
         <div key={r.id} style={{
-          position: 'fixed', left: r.x, top: r.y, fontSize: '36px', pointerEvents: 'none',
+          position: 'fixed',
+          left: r.x * viewport.scale + viewport.x,
+          top: r.y * viewport.scale + viewport.y,
+          fontSize: '36px', pointerEvents: 'none',
           animation: 'floatUp 1.5s cubic-bezier(0.1, 0.8, 0.3, 1) forwards',
           zIndex: 200, transform: 'translate(-50%, -50%)'
         }}>

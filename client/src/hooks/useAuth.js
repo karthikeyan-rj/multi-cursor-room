@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { COLORS } from '../constants';
-
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+import { SERVER_URL } from '../config';
 
 export function useAuth() {
   const [currentUser, setCurrentUser] = useState(null);

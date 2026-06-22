@@ -34,7 +34,7 @@ export default function LobbyScreen({
   onLogout, onColorChange,
   onJoinRoom, onCreateRoom, onPromptSubmit,
   onEnterRoom, onCancelPrompt, onEnterCreatedRoom,
-  onCopyToClipboard, onDeleteRoom
+  onCopyToClipboard, onDeleteRoom, onCloseCreatedRoom
 }) {
   // Form state
   const [joinRoomId, setJoinRoomId] = useState('');
@@ -52,6 +52,7 @@ export default function LobbyScreen({
 
   // Dashboard UI state
   const [sidebarFilter, setSidebarFilter] = useState('all');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
@@ -100,20 +101,115 @@ export default function LobbyScreen({
   // Filtered rooms based on search + sidebar filter
   const filteredRooms = useMemo(() => {
     let result = [...rooms];
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
+    const trimmedQuery = searchQuery.trim();
+    if (trimmedQuery) {
+      const q = trimmedQuery.toLowerCase();
       result = result.filter(r =>
         (r.name || r.roomName || '').toLowerCase().includes(q) ||
-        (r.roomId || '').toLowerCase().includes(q)
+        (r.roomId || '').toLowerCase().includes(q) ||
+        (r.ownerName || r.createdBy || r.ownerUsername || '').toLowerCase().includes(q)
       );
     }
-    if (sidebarFilter === 'recent') result = result.slice(0, 5);
+    if (sidebarFilter === 'recent') result = result.slice(0, 10);
+    else if (sidebarFilter === 'owned') result = result.filter(r => r.ownerId === userId);
+    else if (sidebarFilter === 'joined') result = result.filter(r => r.ownerId !== userId);
     else if (sidebarFilter === 'starred') result = result.filter(r => starredRoomIds.includes(r.roomId));
     return result;
-  }, [rooms, searchQuery, sidebarFilter, starredRoomIds]);
+  }, [rooms, searchQuery, sidebarFilter, starredRoomIds, userId]);
 
-  const recentRooms = useMemo(() => [...rooms].slice(0, 4), [rooms]);
   const starredRoomsList = useMemo(() => rooms.filter(r => starredRoomIds.includes(r.roomId)), [rooms, starredRoomIds]);
+
+  // Render a single room card (used in all room sections)
+  const renderRoomCard = (room) => {
+    const isOwner = room.ownerId === userId;
+    const isStarred = starredRoomIds.includes(room.roomId);
+    const isActive = room.activeCount > 0;
+    return (
+      <div
+        key={room.id || room.roomId}
+        className={`db-room-card glass glass-interactive ${isOwner ? 'db-room-card--owner' : ''}`}
+        onClick={() => onEnterRoom(room)}
+      >
+        <div className="db-room-card-top">
+          <div className="db-room-card-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect width="18" height="18" x="3" y="3" rx="2" />
+              <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
+            </svg>
+          </div>
+          <div className="db-room-card-badges">
+            <button
+              type="button"
+              className="db-star-btn"
+              title={isStarred ? 'Remove from Starred' : 'Star this room'}
+              onClick={e => { e.stopPropagation(); toggleStar(room.roomId); }}
+            >
+              <StarIcon filled={isStarred} />
+            </button>
+            <span className={`db-room-card-status ${isActive ? 'active' : ''}`}>
+              <span className="db-status-dot" style={{ marginRight: 4 }} />
+              {isActive ? 'Active' : 'Idle'}
+            </span>
+            {isOwner
+              ? <span className="room-card-badge" style={{ fontSize: 9 }}>Owner</span>
+              : <span className="db-member-badge" style={{ fontSize: 9 }}>Member</span>
+            }
+          </div>
+        </div>
+        <div className="db-room-card-body">
+          <h3 className="db-room-card-name" title={room.name || room.roomName}>
+            {room.name || room.roomName}
+          </h3>
+          <div className="db-room-card-id">
+            <span className="room-id-chip" style={{ margin: 0, fontSize: 11 }}>
+              <span className="room-id-chip-label">ID</span>{room.roomId}
+            </span>
+          </div>
+          {isActive && (
+            <div className="db-room-card-meta">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+              {room.activeCount} active user{room.activeCount !== 1 ? 's' : ''}
+            </div>
+          )}
+        </div>
+        <div className="db-room-card-actions">
+          <button
+            className="db-action-btn"
+            title="Copy Room ID"
+            onClick={e => { e.stopPropagation(); onCopyToClipboard(room.roomId || ''); }}
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+              <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+            </svg>
+            Copy ID
+          </button>
+          <button className="db-action-btn primary" title="Enter Room">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+            Open
+          </button>
+          {isOwner && (
+            <button
+              className="db-action-btn db-action-danger"
+              title="Delete Room"
+              onClick={e => { e.stopPropagation(); setDeleteTarget(room); }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
+              </svg>
+              Delete
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
   // Workspace display name
   const workspaceLabel = (username || currentUser?.username || currentUser?.name)
@@ -130,6 +226,18 @@ export default function LobbyScreen({
         {/* ── TOP BAR ── */}
         <header className="db-topbar glass">
           <div className="db-topbar-left">
+            <button
+              className="db-sidebar-toggle"
+              onClick={() => setSidebarCollapsed(prev => !prev)}
+              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
+            </button>
             <div className="db-topbar-logo" title={workspaceLabel}>
               <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
                 <rect x="2" y="2" width="36" height="36" rx="10" stroke="url(#lgr)" strokeWidth="2.5" fill="rgba(59,130,246,0.06)" />
@@ -143,24 +251,10 @@ export default function LobbyScreen({
                 </defs>
               </svg>
             </div>
+            <span className="db-topbar-label">{workspaceLabel}</span>
           </div>
 
-          <div className="db-topbar-center">
-            <div className="db-search-wrap">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="db-search-icon">
-                <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-              </svg>
-              <input
-                type="text"
-                className="db-search"
-                placeholder="Search rooms…"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </div>
-
-           <div className="db-topbar-right">
+          <div className="db-topbar-right">
               {/* Notifications */}
               <div className="db-topbar-icon-wrap">
                 <button className="db-topbar-icon" onClick={() => { setNotifOpen(v => !v); setProfileOpen(false); setSettingsOpen(false); }} aria-label="Notifications">
@@ -223,16 +317,16 @@ export default function LobbyScreen({
             </div>
           </header>
 
-         <div className="db-layout">
+         <div className={`db-layout${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
            {/* ── SIDEBAR ── */}
            <aside className="db-sidebar glass">
-             <button className="db-create-btn btn-primary" style={{ marginBottom: '8px' }} onClick={() => setIsCreateModalOpen(true)}>
+              <button className="db-create-btn btn-primary" onClick={() => setIsCreateModalOpen(true)}>
                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
                </svg>
                Create New Room
              </button>
-             <button className="db-create-btn btn-back" style={{ marginBottom: '20px' }} onClick={() => setIsJoinModalOpen(true)}>
+              <button className="db-create-btn btn-back" onClick={() => setIsJoinModalOpen(true)}>
                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
                  <polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" />
@@ -240,46 +334,82 @@ export default function LobbyScreen({
                Join Room
              </button>
 
-             <nav className="db-sidebar-nav">
-               <p className="db-sidebar-section-label">Workspaces</p>
-               <button
-                 className={`db-nav-item ${sidebarFilter === 'all' ? 'active' : ''}`}
-                 onClick={() => setSidebarFilter('all')}
-               >
-                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                   <rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" />
-                   <rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" />
-                 </svg>
-                 All Rooms
-                 <span className="db-nav-badge">{rooms.length}</span>
-               </button>
-               <button
-                 className={`db-nav-item ${sidebarFilter === 'recent' ? 'active' : ''}`}
-                 onClick={() => setSidebarFilter('recent')}
-               >
-                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                   <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-                 </svg>
-                 Recent
-               </button>
-               <button
-                 className={`db-nav-item ${sidebarFilter === 'starred' ? 'active' : ''}`}
-                 onClick={() => setSidebarFilter('starred')}
-               >
-                 <svg width="16" height="16" viewBox="0 0 24 24"
-                   fill={starredRoomsList.length > 0 ? '#eab308' : 'none'}
-                   stroke={starredRoomsList.length > 0 ? '#eab308' : 'currentColor'}
-                   strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                   <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                 </svg>
-                 Starred
-                 {starredRoomsList.length > 0 && <span className="db-nav-badge">{starredRoomsList.length}</span>}
-               </button>
-             </nav>
+              <nav className="db-sidebar-nav">
+                <p className="db-sidebar-section-label">Workspaces</p>
+                <button
+                  className={`db-nav-item ${sidebarFilter === 'all' ? 'active' : ''}`}
+                  onClick={() => setSidebarFilter('all')}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" />
+                    <rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" />
+                  </svg>
+                  All Rooms
+                  <span className="db-nav-badge">{rooms.length}</span>
+                </button>
+                <button
+                  className={`db-nav-item ${sidebarFilter === 'owned' ? 'active' : ''}`}
+                  onClick={() => setSidebarFilter('owned')}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  Owned
+                  {rooms.filter(r => r.ownerId === userId).length > 0 && <span className="db-nav-badge">{rooms.filter(r => r.ownerId === userId).length}</span>}
+                </button>
+                <button
+                  className={`db-nav-item ${sidebarFilter === 'joined' ? 'active' : ''}`}
+                  onClick={() => setSidebarFilter('joined')}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                  Joined
+                  {rooms.filter(r => r.ownerId !== userId).length > 0 && <span className="db-nav-badge">{rooms.filter(r => r.ownerId !== userId).length}</span>}
+                </button>
+                <button
+                  className={`db-nav-item ${sidebarFilter === 'starred' ? 'active' : ''}`}
+                  onClick={() => setSidebarFilter('starred')}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24"
+                    fill={starredRoomsList.length > 0 ? '#eab308' : 'none'}
+                    stroke={starredRoomsList.length > 0 ? '#eab308' : 'currentColor'}
+                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                  </svg>
+                  Starred
+                  {starredRoomsList.length > 0 && <span className="db-nav-badge">{starredRoomsList.length}</span>}
+                </button>
+              </nav>
            </aside>
 
           {/* ── MAIN CONTENT ── */}
           <main className="db-main">
+
+            {/* ── WELCOME HERO ── */}
+            <section className="db-welcome db-section">
+              <h1 className="db-welcome-title">Welcome back, {username || 'there'}</h1>
+              <p className="db-welcome-subtitle">Create a room, join a workspace, or continue collaborating with your team.</p>
+              <div className="db-welcome-actions">
+                <button className="btn-primary" onClick={() => setIsCreateModalOpen(true)}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  New Room
+                </button>
+                <button className="btn-back" onClick={() => setIsJoinModalOpen(true)}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                    <polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" />
+                  </svg>
+                  Join Room
+                </button>
+              </div>
+            </section>
 
             {/* ── OVERVIEW ── */}
             <section className="db-section">
@@ -314,273 +444,167 @@ export default function LobbyScreen({
                     </svg>
                   </div>
                   <div>
-                    <div className="db-overview-value">{starredRoomsList.length}</div>
-                    <div className="db-overview-label">Starred</div>
+                    <div className="db-overview-value">{rooms.filter(r => r.ownerId === userId).length}</div>
+                    <div className="db-overview-label">Owned</div>
                   </div>
                 </div>
               </div>
             </section>
 
-            {/* ── RECENT ROOMS ── */}
-            <section className="db-section">
-              <div className="db-section-header">
-                <h2 className="db-section-title">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+            {/* ── FILTER TABS ── */}
+            <div className="db-filter-bar">
+              <div className="db-filter-tabs">
+                <button
+                  className={`db-filter-tab ${sidebarFilter === 'all' ? 'active' : ''}`}
+                  onClick={() => setSidebarFilter('all')}
+                >All Rooms</button>
+                <button
+                  className={`db-filter-tab ${sidebarFilter === 'owned' ? 'active' : ''}`}
+                  onClick={() => setSidebarFilter('owned')}
+                >Owned ({rooms.filter(r => r.ownerId === userId).length})</button>
+                <button
+                  className={`db-filter-tab ${sidebarFilter === 'joined' ? 'active' : ''}`}
+                  onClick={() => setSidebarFilter('joined')}
+                >Joined ({rooms.filter(r => r.ownerId !== userId).length})</button>
+                <button
+                  className={`db-filter-tab ${sidebarFilter === 'starred' ? 'active' : ''}`}
+                  onClick={() => setSidebarFilter('starred')}
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill={starredRoomsList.length > 0 ? '#eab308' : 'none'} stroke="#eab308" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ verticalAlign: 'middle' }}>
+                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
                   </svg>
-                  Recent Rooms
-                </h2>
+                  Starred {starredRoomsList.length > 0 && `(${starredRoomsList.length})`}
+                </button>
               </div>
+              <div className="db-search-wrap" style={{ minWidth: 200 }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="db-search-icon">
+                  <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+                </svg>
+                <input
+                  type="text"
+                  className="db-search"
+                  placeholder="Search rooms by name, ID, or owner…"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                />
+              </div>
+            </div>
 
-              {recentRooms.length === 0 ? (
+            {/* ── ROOMS GRID ── */}
+            <section className="db-section">
+              {rooms.length === 0 ? (
                 <div className="db-empty-state glass">
-                  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.25, marginBottom: 12 }}>
+                  <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="db-empty-icon">
                     <rect width="18" height="18" x="3" y="3" rx="2" />
                     <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
                   </svg>
-                  <p style={{ fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px' }}>No rooms yet</p>
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>Create a room or join one using a room ID to get started.</p>
-                  <button className="btn-primary" style={{ marginTop: 16 }} onClick={() => setIsCreateModalOpen(true)}>
-                    + Create Your First Room
-                  </button>
-                </div>
-              ) : (
-                <div className="db-recent-grid">
-                  {recentRooms.map(room => (
-                    <div
-                      key={room.id}
-                      className="db-recent-card glass glass-interactive"
-                      style={{ position: 'relative' }}
-                      onClick={() => onEnterRoom(room)}
-                    >
-                      <button
-                        type="button"
-                        className="db-star-btn"
-                        title={starredRoomIds.includes(room.roomId) ? 'Remove from Starred' : 'Star this room'}
-                        onClick={e => { e.stopPropagation(); toggleStar(room.roomId); }}
-                      >
-                        <StarIcon filled={starredRoomIds.includes(room.roomId)} />
-                      </button>
-                      <div className="db-recent-card-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <rect width="18" height="18" x="3" y="3" rx="2" />
-                          <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
-                        </svg>
-                      </div>
-                      <div className="db-recent-card-content">
-                        <div className="db-recent-card-name">{room.name || room.roomName}</div>
-                        <div className="db-recent-card-meta">
-                          <span className={`db-status-dot ${room.activeCount > 0 ? 'active' : ''}`} />
-                          {room.activeCount > 0 ? `${room.activeCount} active` : 'Idle'}
-                        </div>
-                        <div className="db-recent-card-footer">
-                          <span className="room-id-chip" style={{ marginBottom: 0 }}>
-                            <span className="room-id-chip-label">ID</span>{room.roomId}
-                          </span>
-                          {room.ownerId === userId && <span className="room-card-badge">Owner</span>}
-                        </div>
-                      </div>
-                      <div className="db-recent-card-arrow">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M5 12h14M12 5l7 7-7 7" />
-                        </svg>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {/* ── STARRED ROOMS ── */}
-            <section className="db-section">
-              <div className="db-section-header">
-                <h2 className="db-section-title">
-                  <svg width="18" height="18" viewBox="0 0 24 24"
-                    fill={starredRoomsList.length > 0 ? '#eab308' : 'none'}
-                    stroke={starredRoomsList.length > 0 ? '#eab308' : 'currentColor'}
-                    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                  </svg>
-                  Starred Rooms
-                  {starredRoomsList.length > 0 && <span className="db-section-count">{starredRoomsList.length}</span>}
-                </h2>
-              </div>
-              {starredRoomsList.length === 0 ? (
-                <div style={{ padding: '16px 20px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', gap: 12, color: 'var(--text-muted)' }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.4, flexShrink: 0 }}>
-                    <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-                  </svg>
-                  <span style={{ fontSize: 13 }}>No starred rooms yet — click ☆ on a room card to save it here.</span>
-                </div>
-              ) : (
-                <div className="db-recent-grid">
-                  {starredRoomsList.map(room => (
-                    <div
-                      key={room.id}
-                      className="db-recent-card glass glass-interactive"
-                      style={{ position: 'relative' }}
-                      onClick={() => onEnterRoom(room)}
-                    >
-                      <button
-                        type="button"
-                        className="db-star-btn"
-                        title="Remove from Starred"
-                        onClick={e => { e.stopPropagation(); toggleStar(room.roomId); }}
-                      >
-                        <StarIcon filled={true} />
-                      </button>
-                      <div className="db-recent-card-icon">
-                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                          <rect width="18" height="18" x="3" y="3" rx="2" />
-                          <path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
-                        </svg>
-                      </div>
-                      <div className="db-recent-card-content">
-                        <div className="db-recent-card-name">{room.name || room.roomName}</div>
-                        <div className="db-recent-card-meta">
-                          <span className={`db-status-dot ${room.activeCount > 0 ? 'active' : ''}`} />
-                          {room.activeCount > 0 ? `${room.activeCount} active` : 'Idle'}
-                        </div>
-                        <div className="db-recent-card-footer">
-                          <span className="room-id-chip" style={{ marginBottom: 0 }}>
-                            <span className="room-id-chip-label">ID</span>{room.roomId}
-                          </span>
-                          {room.ownerId === userId && <span className="room-card-badge">Owner</span>}
-                        </div>
-                      </div>
-                      <div className="db-recent-card-arrow">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M5 12h14M12 5l7 7-7 7" />
-                        </svg>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-
-            {/* ── ALL ROOMS LIST ── */}
-            <section className="db-section">
-              <div className="db-section-header">
-                <h2 className="db-section-title">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect width="7" height="7" x="3" y="3" rx="1" /><rect width="7" height="7" x="14" y="3" rx="1" />
-                    <rect width="7" height="7" x="14" y="14" rx="1" /><rect width="7" height="7" x="3" y="14" rx="1" />
-                  </svg>
-                  {sidebarFilter === 'recent' ? 'Recent Rooms' : sidebarFilter === 'starred' ? 'Starred Rooms' : 'All Rooms'}
-                  <span className="db-section-count">{filteredRooms.length}</span>
-                </h2>
-              </div>
-
-              <div className="db-rooms-panel glass">
-                {filteredRooms.length === 0 ? (
-                  <div style={{ padding: '48px 24px', textAlign: 'center', color: 'var(--text-muted)', fontSize: 14 }}>
-                    {searchQuery
-                      ? `No rooms match "${searchQuery}"`
-                      : sidebarFilter === 'starred'
-                        ? 'No starred rooms. Click the ☆ on a room to star it.'
-                        : 'No rooms to show.'}
+                  <h3 className="db-empty-title">No rooms yet</h3>
+                  <p className="db-empty-desc">Create your first room or join one using a Room ID to get started.</p>
+                  <div className="db-empty-actions">
+                    <button className="btn-primary" onClick={() => setIsCreateModalOpen(true)}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                      Create Your First Room
+                    </button>
+                    <button className="btn-back" onClick={() => setIsJoinModalOpen(true)}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                        <polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" />
+                      </svg>
+                      Join a Room
+                    </button>
                   </div>
-                ) : (
-                  <table className="db-rooms-table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: 32 }}></th>
-                        <th>Name</th>
-                        <th>Room ID</th>
-                        <th>Users</th>
-                        <th>Status</th>
-                        <th>Role</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredRooms.map(room => (
-                        <tr key={room.id} className="db-room-row glass-interactive" onClick={() => onEnterRoom(room)}>
-                          <td onClick={e => e.stopPropagation()}>
-                            <button
-                              type="button"
-                              className="db-action-btn"
-                              title={starredRoomIds.includes(room.roomId) ? 'Remove from Starred' : 'Star room'}
-                              style={{ color: starredRoomIds.includes(room.roomId) ? '#eab308' : 'var(--text-muted)' }}
-                              onClick={e => { e.stopPropagation(); toggleStar(room.roomId); }}
-                            >
-                              <StarIcon filled={starredRoomIds.includes(room.roomId)} />
-                            </button>
-                          </td>
-                          <td>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                              <div className="db-room-icon-small">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18M15 3v18M3 9h18M3 15h18" />
-                                </svg>
-                              </div>
-                              <span className="db-room-name">{room.name || room.roomName}</span>
-                            </div>
-                          </td>
-                          <td>
-                            <span className="room-id-chip" style={{ marginBottom: 0 }}>
-                              <span className="room-id-chip-label">ID</span>
-                              {room.roomId}
-                            </span>
-                          </td>
-                          <td>
-                            <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-secondary)', fontSize: 13 }}>
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-                                <path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                              </svg>
-                              {room.activeCount ?? 0}
-                            </span>
-                          </td>
-                          <td>
-                            <span className={`db-status-badge ${room.activeCount > 0 ? 'active' : 'idle'}`}>
-                              <span className={`db-status-dot ${room.activeCount > 0 ? 'active' : ''}`} style={{ marginRight: 4 }} />
-                              {room.activeCount > 0 ? 'Active' : 'Idle'}
-                            </span>
-                          </td>
-                          <td>
-                            {room.ownerId === userId
-                              ? <span className="room-card-badge">Owner</span>
-                              : <span className="db-member-badge">Member</span>}
-                          </td>
-                          <td onClick={e => e.stopPropagation()}>
-                            <div className="db-row-actions">
-                              <button
-                                className="db-action-btn"
-                                title="Copy ID"
-                                onClick={() => onCopyToClipboard(room.roomId || '')}
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
-                                  <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
-                                </svg>
-                              </button>
-                              <button className="db-action-btn" title="Enter Room" onClick={() => onEnterRoom(room)}>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                  <path d="M5 12h14M12 5l7 7-7 7" />
-                                </svg>
-                              </button>
-                              {room.ownerId === userId && (
-                                <button
-                                  className="db-action-btn db-action-danger"
-                                  title="Delete Room"
-                                  onClick={() => setDeleteTarget(room)}
-                                >
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-                                    <path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
-                                  </svg>
-                                </button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
+                </div>
+              ) : filteredRooms.length === 0 ? (
+                <div className="db-empty-state glass" style={{ padding: '40px 24px' }}>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="db-empty-icon" style={{ opacity: 0.3 }}>
+                    <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
+                  </svg>
+                  <p className="db-empty-desc" style={{ marginTop: 8 }}>
+                    {searchQuery
+                      ? <>No rooms match "<strong>{searchQuery}</strong>"</>
+                      : sidebarFilter === 'owned'
+                        ? 'You haven\'t created any rooms yet.'
+                        : sidebarFilter === 'joined'
+                          ? 'You haven\'t joined any rooms yet.'
+                          : sidebarFilter === 'starred'
+                            ? 'No starred rooms. Click the star icon on a room card to star it.'
+                            : 'No rooms to show.'}
+                  </p>
+                  {(sidebarFilter === 'owned' || sidebarFilter === 'starred') && (
+                    <button className="btn-primary" style={{ marginTop: 16 }} onClick={() => setIsCreateModalOpen(true)}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                      </svg>
+                      Create a Room
+                    </button>
+                  )}
+                </div>
+              ) : sidebarFilter === 'owned' || sidebarFilter === 'joined' || sidebarFilter === 'starred' ? (
+                /* ── Single-filter view (owned, joined, or starred) ── */
+                <div className="db-room-grid">
+                  {filteredRooms.map(room => renderRoomCard(room))}
+                </div>
+              ) : sidebarFilter === 'all' || sidebarFilter === 'recent' ? (
+                /* ── Split sections view ── */
+                <>
+                  {rooms.filter(r => r.ownerId === userId).length > 0 && (
+                    <div className="db-room-section">
+                      <div className="db-section-header">
+                        <h2 className="db-section-title">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                          </svg>
+                          My Rooms
+                          <span className="db-section-count">{rooms.filter(r => r.ownerId === userId).length}</span>
+                        </h2>
+                      </div>
+                      <div className="db-room-grid">
+                        {rooms.filter(r => r.ownerId === userId).map(room => renderRoomCard(room))}
+                      </div>
+                    </div>
+                  )}
+
+                  {rooms.filter(r => r.ownerId !== userId).length > 0 && (
+                    <div className="db-room-section">
+                      <div className="db-section-header">
+                        <h2 className="db-section-title">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                            <circle cx="9" cy="7" r="4" />
+                            <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                            <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                          </svg>
+                          Joined Rooms
+                          <span className="db-section-count">{rooms.filter(r => r.ownerId !== userId).length}</span>
+                        </h2>
+                      </div>
+                      <div className="db-room-grid">
+                        {rooms.filter(r => r.ownerId !== userId).map(room => renderRoomCard(room))}
+                      </div>
+                    </div>
+                  )}
+
+                  {starredRoomsList.length > 0 && (
+                    <div className="db-room-section">
+                      <div className="db-section-header">
+                        <h2 className="db-section-title">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="#eab308" stroke="#eab308" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                          </svg>
+                          Starred
+                          <span className="db-section-count">{starredRoomsList.length}</span>
+                        </h2>
+                      </div>
+                      <div className="db-room-grid">
+                        {starredRoomsList.map(room => renderRoomCard(room))}
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : null}
             </section>
           </main>
         </div>
@@ -598,7 +622,7 @@ export default function LobbyScreen({
 
       {/* ── ROOM CREATED SUCCESS MODAL ── */}
       {createdRoomDetails && (
-        <div className="modal-overlay">
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) onCloseCreatedRoom(); }}>
           <div className="panel-card glass modal-content" style={{ width: '100%', maxWidth: '400px', textAlign: 'center' }}>
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" style={{ marginBottom: 16 }}>
               <circle cx="12" cy="12" r="10" stroke="#22c55e" strokeWidth="2" fill="rgba(34,197,94,0.15)" />
@@ -617,7 +641,10 @@ export default function LobbyScreen({
                 >Copy</button>
               </div>
             </div>
-            <button className="btn-primary" style={{ width: '100%' }} onClick={onEnterCreatedRoom}>Enter Room →</button>
+            <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+              <button className="btn-back" style={{ flex: 1, justifyContent: 'center', padding: '10px 16px' }} onClick={onCloseCreatedRoom}>OK</button>
+              <button className="btn-primary" style={{ flex: 1 }} onClick={onEnterCreatedRoom}>Enter Room →</button>
+            </div>
           </div>
         </div>
       )}
@@ -698,8 +725,11 @@ export default function LobbyScreen({
                 return;
               }
               setCreating(true);
-              await onCreateRoom(newRoomName.trim(), newRoomPassword);
+              const createdRoom = await onCreateRoom(newRoomName.trim(), newRoomPassword);
               setCreating(false);
+              if (createdRoom && sidebarFilter === 'starred') {
+                toggleStar(createdRoom.roomId);
+              }
               setNewRoomName('');
               setNewRoomPassword('');
               setIsCreateModalOpen(false);

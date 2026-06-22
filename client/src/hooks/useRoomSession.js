@@ -4,12 +4,12 @@ import { io } from 'socket.io-client';
 import { showToast } from '../utils/toast';
 import { redraw, drawShapePreview } from '../utils/canvas';
 import { playMessageSound, unlockMessageSound } from '../utils/sound';
+import { SERVER_URL } from '../config';
 
 function generateStrokeId() {
   return 's-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
 }
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
 export const socket = io(SERVER_URL, {
   auth: (cb) => cb({ token: localStorage.getItem('cursor_room_token') }),
   transports: ['websocket', 'polling'],
@@ -336,9 +336,10 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       if (now - lastCursorEmitRef.current < 40) return;
       lastCursorEmitRef.current = now;
 
-      const x = e.clientX, y = e.clientY;
-      setMyPos({ x, y });
-      socket.emit('cursor_move', { x, y });
+      const screenX = e.clientX, screenY = e.clientY;
+      setMyPos({ x: screenX, y: screenY });
+      const world = screenToBoard(screenX, screenY);
+      socket.emit('cursor_move', { x: world.x, y: world.y });
     };
     window.addEventListener('mousemove', handleMouseMove);
     return () => window.removeEventListener('mousemove', handleMouseMove);
@@ -348,12 +349,12 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
     if (!currentRoomId || !canvasRef.current) return;
     const handleResize = () => {
       const canvas = canvasRef.current;
-      if (canvas) { canvas.width = window.innerWidth; canvas.height = window.innerHeight; redraw(canvas, drawings, viewportRef.current); }
+      if (canvas) { canvas.width = window.innerWidth; canvas.height = window.innerHeight; redraw(canvas, drawingsRef.current, viewportRef.current); }
     };
     window.addEventListener('resize', handleResize);
     handleResize();
     return () => window.removeEventListener('resize', handleResize);
-  }, [currentRoomId, drawings]);
+  }, [currentRoomId]);
 
   useEffect(() => {
     if (canvasRef.current) redraw(canvasRef.current, drawings, viewportRef.current);
@@ -530,7 +531,10 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
 
   const sendReaction = (emoji) => {
     if (!currentRoomId) return;
-    socket.emit('reaction', { emoji, x: myPos.x, y: myPos.y });
+    const vp = viewportRef.current;
+    const worldX = (myPos.x - vp.x) / vp.scale;
+    const worldY = (myPos.y - vp.y) / vp.scale;
+    socket.emit('reaction', { emoji, x: worldX, y: worldY });
   };
 
   const handleSendChat = (e) => {

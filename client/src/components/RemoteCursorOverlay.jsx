@@ -1,8 +1,11 @@
-export default function RemoteCursorOverlay({ remoteCursors }) {
+export default function RemoteCursorOverlay({ remoteCursors, viewport }) {
   return Object.values(remoteCursors).map(user => (
     user.x !== undefined && (
       <div key={user.id} style={{
-        position: 'fixed', left: user.x, top: user.y, pointerEvents: 'none',
+        position: 'fixed',
+        left: user.x * viewport.scale + viewport.x,
+        top: user.y * viewport.scale + viewport.y,
+        pointerEvents: 'none',
         transform: 'translate(-2px, -2px)',
         transition: 'left 0.08s cubic-bezier(0.1, 0.8, 0.25, 1), top 0.08s cubic-bezier(0.1, 0.8, 0.25, 1)',
         zIndex: 90

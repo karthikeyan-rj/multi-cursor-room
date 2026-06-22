@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { showToast } from '../utils/toast';
 import { socket } from '../hooks/useRoomSession';
-
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+import { SERVER_URL } from '../config';
 
 function getUserId(user) {
   return user?.userId || user?._id || user?.id;

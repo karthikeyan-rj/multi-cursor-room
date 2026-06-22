@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react';
 import { showToast } from '../utils/toast';
 import { socket } from './useRoomSession';
-
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+import { SERVER_URL } from '../config';
 
 export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
   const [rooms, setRooms] = useState([]);
@@ -66,6 +65,7 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
       const data = await response.json();
       if (data.success) {
         setCreatedRoomDetails({ id: data.room.id, name: data.room.name, roomId: data.room.roomId });
+        return { id: data.room.id, roomId: data.room.roomId };
       } else {
         showToast(data.error || 'Failed to create room.', 'error');
       }

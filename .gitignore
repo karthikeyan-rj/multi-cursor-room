@@ -88,5 +88,8 @@ mongod.lock
 # Upload test script (dev only)
 server/_test_upload.js
 
+# Local notes / secrets files
+multiple-cursor-room (personal details).txt
+
 # Server uploads (user-uploaded files, local disk fallback)
 server/uploads/

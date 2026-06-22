@@ -62,6 +62,16 @@ app.use(cors(corsOptions));
 // File upload routes
 app.use('/api/rooms', fileRoutes);
 
+// Production: serve the built client
+if (process.env.NODE_ENV === 'production') {
+  const clientDist = path.join(__dirname, '../client/dist');
+  app.use(express.static(clientDist));
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
+
 // Dev-only: serve local uploaded files and cloudinary debug endpoint
 if (process.env.NODE_ENV !== 'production') {
   app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -424,6 +434,8 @@ app.post('/api/rooms/join', authenticateToken, async (req, res) => {
     const isKicked = await db.isUserKicked(room.id, req.user.userId);
     if (isKicked) {
       await db.addJoinRequest(room.id, req.user.userId, req.user.email, req.user.username);
+      const io = req.app.get('io');
+      io.to(room.id).emit('room-members-updated', { ownerId: room.ownerId });
       return res.status(202).json({
         success: true,
         requiresApproval: true,
@@ -728,6 +740,13 @@ io.on('connection', (socket) => {
 
       // Broadcast new user connection to others in the room
       socket.to(roomId).emit('user_joined', activeUsers[roomId][socket.id]);
+      // Notify others about join activity
+      socket.to(roomId).emit('room-activity', {
+        type: 'join',
+        username: displayName,
+        userId,
+        message: `${displayName} joined`
+      });
       // Broadcast updated members list to all (including the new user)
       io.to(roomId).emit('room-members-updated', { ownerId: room.ownerId });
     } catch (err) {
@@ -969,6 +988,12 @@ io.on('connection', (socket) => {
     if (currentRoomId && activeUsers[currentRoomId] && activeUsers[currentRoomId][socket.id]) {
       const user = activeUsers[currentRoomId][socket.id];
       socket.to(currentRoomId).emit('user_left', socket.id);
+      socket.to(currentRoomId).emit('room-activity', {
+        type: 'leave',
+        username: user.name,
+        userId: user.userId,
+        message: `${user.name} left`
+      });
       io.to(currentRoomId).emit('room-members-updated', {});
       delete activeUsers[currentRoomId][socket.id];
       socket.leave(currentRoomId);
@@ -1000,6 +1025,8 @@ io.on('connection', (socket) => {
 
       // Kick from active users and emit to target sockets
       const roomSockets = activeUsers[roomId];
+      const targetUserData = roomSockets ? Object.values(roomSockets).find(u => u.userId === targetUserId) : null;
+      const targetUsername = targetUserData?.name || targetUserId;
       if (roomSockets) {
         for (const [sid, userData] of Object.entries(roomSockets)) {
           if (userData.userId === targetUserId) {
@@ -1019,6 +1046,13 @@ io.on('connection', (socket) => {
         }
       }
 
+      // Notify remaining members about kick activity
+      io.to(roomId).emit('room-activity', {
+        type: 'kick',
+        username: targetUsername,
+        userId: targetUserId,
+        message: `${targetUsername} was kicked`
+      });
       // Notify remaining members
       io.to(roomId).emit('room-members-updated', { action: 'kicked', targetUserId });
       // Remove kicked user's cursor from all remaining clients
@@ -1036,6 +1070,12 @@ io.on('connection', (socket) => {
     if (currentRoomId && activeUsers[currentRoomId] && activeUsers[currentRoomId][socket.id]) {
       const user = activeUsers[currentRoomId][socket.id];
       socket.to(currentRoomId).emit('user_left', socket.id);
+      io.to(currentRoomId).emit('room-activity', {
+        type: 'leave',
+        username: user.name,
+        userId: user.userId,
+        message: `${user.name} left`
+      });
 
       delete activeUsers[currentRoomId][socket.id];
       console.log(`👤 User "${user.name}" left room "${currentRoomId}"`);

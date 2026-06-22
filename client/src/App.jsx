@@ -6,6 +6,7 @@ import { useAuth } from './hooks/useAuth';
 import { useRooms } from './hooks/useRooms';
 import { useRoomSession } from './hooks/useRoomSession';
 import { ToastProvider } from './components/Toast';
+import { SERVER_URL } from './config';
 import AuthScreen from './components/AuthScreen';
 import LobbyScreen from './components/LobbyScreen';
 import ProfilePage from './components/ProfilePage';
@@ -219,6 +220,7 @@ function AppContent() {
                 rooms.setCreatedRoomDetails(null);
                 navigate(`/room/${roomId}`);
               }}
+              onCloseCreatedRoom={() => rooms.setCreatedRoomDetails(null)}
               onCopyToClipboard={copyToClipboard}
               onDeleteRoom={rooms.handleDeleteRoom}
             />
@@ -338,7 +340,7 @@ function RoomRouteWrapper({
       setLoading(true);
       try {
         const token = localStorage.getItem('cursor_room_token');
-        const response = await fetch(`${import.meta.env.VITE_SERVER_URL || 'http://localhost:3001'}/api/rooms/${roomId}`, {
+        const response = await fetch(`${SERVER_URL}/api/rooms/${roomId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await response.json();
