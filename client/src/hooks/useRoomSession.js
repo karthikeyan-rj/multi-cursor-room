@@ -504,30 +504,39 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       e.preventDefault();
       const note = stickyNotes.find(n => n.id === id);
       if (!note) return;
-      setDraggedNote({ id, startX: e.clientX, startY: e.clientY, noteX: note.x, noteY: note.y });
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      setDraggedNote({ id, startX: clientX, startY: clientY, noteX: note.x, noteY: note.y });
     }
   };
 
   useEffect(() => {
-    const handleMouseMove = (e) => {
+    const getClientX = (e) => e.touches ? e.touches[0].clientX : e.clientX;
+    const getClientY = (e) => e.touches ? e.touches[0].clientY : e.clientY;
+
+    const handleMove = (e) => {
       if (draggedNote) {
         const s = viewportRef.current.scale;
-        const dx = (e.clientX - draggedNote.startX) / s;
-        const dy = (e.clientY - draggedNote.startY) / s;
+        const dx = (getClientX(e) - draggedNote.startX) / s;
+        const dy = (getClientY(e) - draggedNote.startY) / s;
         const newX = draggedNote.noteX + dx;
         const newY = draggedNote.noteY + dy;
         setStickyNotes(prev => prev.map(n => n.id === draggedNote.id ? { ...n, x: newX, y: newY } : n));
         socket.emit('move_sticky', { id: draggedNote.id, x: newX, y: newY });
       }
     };
-    const handleMouseUp = () => { if (draggedNote) setDraggedNote(null); };
+    const handleUp = () => { if (draggedNote) setDraggedNote(null); };
     if (draggedNote) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
+      window.addEventListener('mousemove', handleMove);
+      window.addEventListener('mouseup', handleUp);
+      window.addEventListener('touchmove', handleMove, { passive: true });
+      window.addEventListener('touchend', handleUp);
     }
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+      window.removeEventListener('touchmove', handleMove);
+      window.removeEventListener('touchend', handleUp);
     };
   }, [draggedNote]);
 

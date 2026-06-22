@@ -467,6 +467,7 @@ body {
   position: relative;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   background-color: var(--bg-darker);
   overflow: hidden;
 }
@@ -4760,6 +4761,453 @@ body {
   .db-welcome-actions .btn-back {
     flex: 1;
     justify-content: center;
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE IMPROVEMENTS
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Canvas: prevent unwanted page scrolling while drawing ──── */
+.canvas-element {
+  touch-action: none;
+}
+
+/* ── Sidebar off-canvas mobile ──────────────────────────────── */
+.db-sidebar-overlay {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  /* Sidebar: slide off-screen by default, overlay when open */
+  .db-sidebar {
+    position: fixed !important;
+    top: 64px;
+    left: 0;
+    bottom: 0;
+    width: 260px !important;
+    z-index: 200;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    border-right: 1px solid var(--border-light) !important;
+    padding: 16px 12px !important;
+    background: rgba(10, 10, 18, 0.96) !important;
+  }
+  .db-sidebar.open {
+    transform: translateX(0);
+  }
+  .db-sidebar-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+    background: rgba(0, 0, 0, 0.5);
+    animation: fadeIn 0.2s ease-out;
+  }
+  .sidebar-collapsed .db-sidebar {
+    width: 260px !important;
+    transform: translateX(-100%);
+    padding: 16px 12px !important;
+  }
+  .sidebar-collapsed .db-sidebar.open {
+    transform: translateX(0);
+  }
+  .db-create-btn span,
+  .db-nav-item span,
+  .db-sidebar-section-label,
+  .db-nav-badge,
+  .db-sidebar-footer .db-nav-item span {
+    display: inline !important;
+  }
+  .db-create-btn {
+    justify-content: center;
+    padding: 12px 16px;
+  }
+  .db-create-btn svg {
+    margin: 0;
+  }
+  .db-nav-item {
+    justify-content: flex-start;
+    padding: 7px 10px;
+  }
+}
+
+/* ── Room header (TopNav) mobile ────────────────────────────── */
+@media (max-width: 768px) {
+  .top-nav {
+    top: 0;
+    left: 0;
+    right: 0;
+    height: auto;
+    min-height: 56px;
+    padding: 10px 14px;
+    flex-wrap: wrap;
+    border-radius: 0;
+    gap: 8px;
+  }
+  .nav-left {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .nav-right {
+    width: 100%;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .btn-back {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+  .btn-back svg {
+    width: 14px;
+    height: 14px;
+  }
+  .room-title-section {
+    flex: 1;
+    min-width: 0;
+  }
+  .room-name-display {
+    font-size: 15px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .room-owner-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    margin-left: 4px;
+  }
+  .room-id-row {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  .room-status-sub {
+    font-size: 11px;
+  }
+  .room-copy-btn {
+    font-size: 10px;
+    padding: 2px 8px;
+  }
+  .room-online-count {
+    font-size: 11px;
+    margin-left: 6px;
+  }
+  .top-nav .toolbar-btn {
+    width: 34px;
+    height: 34px;
+  }
+  .top-nav .toolbar-btn svg {
+    width: 17px;
+    height: 17px;
+  }
+  .light-board-nav .top-nav {
+    background: rgba(255, 255, 255, 0.18) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .room-status-sub {
+    font-size: 10px;
+  }
+  .top-nav .toolbar-btn {
+    width: 32px;
+    height: 32px;
+  }
+  .top-nav .toolbar-btn svg {
+    width: 16px;
+    height: 16px;
+  }
+  .room-name-display {
+    font-size: 14px;
+  }
+}
+
+/* ── Chat drawer bottom sheet on mobile ─────────────────────── */
+@media (max-width: 640px) {
+  .chat-drawer {
+    top: auto !important;
+    bottom: 0 !important;
+    right: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    height: auto !important;
+    max-height: 60vh;
+    border-radius: 18px 18px 0 0;
+    transform: translateY(0);
+  }
+  .chat-drawer.closed {
+    transform: translateY(calc(100% + 20px)) !important;
+  }
+  .chat-resize-handle {
+    display: none !important;
+  }
+  .chat-header {
+    padding: 12px 14px;
+    border-radius: 18px 18px 0 0;
+  }
+  .chat-header::before {
+    content: '';
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.15);
+  }
+  .chat-header {
+    position: relative;
+  }
+  .chat-message-list {
+    padding: 12px 10px;
+    max-height: calc(60vh - 130px);
+  }
+  .chat-message-bubble {
+    max-width: 90%;
+    padding: 8px 14px;
+    font-size: 14px;
+  }
+  .chat-input-area {
+    padding: 6px 10px 10px;
+  }
+  .chat-textarea {
+    font-size: 16px;
+    min-height: 40px;
+  }
+  .chat-emoji-picker-full {
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 4px);
+    width: 100%;
+    max-width: 100%;
+    max-height: min(300px, 50vh);
+    border-radius: 16px;
+    position: fixed;
+  }
+  .emoji-grid {
+    grid-template-columns: repeat(7, 1fr);
+  }
+  .emoji-grid button {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    max-width: 32px;
+    max-height: 32px;
+    font-size: 20px;
+  }
+  /* Message actions always visible on mobile (no hover) */
+  .message-actions {
+    opacity: 0.5;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+  .msg-action-btn {
+    width: 32px;
+    height: 32px;
+  }
+  .chat-reply-preview {
+    padding: 7px 10px;
+    margin-bottom: 6px;
+  }
+  .chat-mute-btn {
+    width: 28px !important;
+    height: 28px !important;
+  }
+  .chat-close-btn {
+    width: 28px !important;
+    height: 28px !important;
+  }
+}
+
+/* ── Members/Activity/Settings panels mobile ────────────────── */
+@media (max-width: 768px) {
+  .members-panel,
+  .activity-panel,
+  .settings-panel {
+    top: 60px !important;
+    right: 10px !important;
+    width: calc(100% - 20px) !important;
+    max-width: 360px;
+    max-height: calc(100vh - 80px);
+  }
+}
+
+@media (max-width: 480px) {
+  .members-panel,
+  .activity-panel,
+  .settings-panel {
+    right: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: calc(100vh - 56px);
+    border-radius: 0 !important;
+    top: 56px !important;
+  }
+  .confirm-modal {
+    width: calc(100vw - 24px);
+    padding: 24px 20px;
+  }
+}
+
+/* ── Floating toolbar mobile ────────────────────────────────── */
+@media (max-width: 640px) {
+  .floating-toolbar {
+    bottom: 12px;
+    height: 48px;
+    gap: 6px;
+    padding: 0 10px;
+    border-radius: 14px;
+  }
+  .floating-toolbar .toolbar-btn {
+    width: 34px;
+    height: 34px;
+  }
+  .floating-toolbar .toolbar-btn svg {
+    width: 17px;
+    height: 17px;
+  }
+  .toolbar-divider {
+    height: 20px;
+  }
+  .toolbar-popover {
+    bottom: 48px;
+  }
+  .toolbar-popover.popover-emoji {
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    padding: 8px;
+  }
+  .toolbar-popover .reaction-btn {
+    font-size: 18px;
+    padding: 3px;
+  }
+  .popover-color {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+    padding: 8px;
+  }
+  .popover-size {
+    gap: 6px;
+    padding: 8px;
+  }
+  .toolbar-size-opt {
+    width: 22px;
+    height: 22px;
+  }
+  .toolbar-color-dot {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+/* ── Zoom controls + board color mobile ─────────────────────── */
+@media (max-width: 640px) {
+  .zoom-controls {
+    bottom: 72px;
+    right: 12px;
+    padding: 3px;
+  }
+  .zoom-controls button {
+    width: 28px;
+    height: 28px;
+    font-size: 15px;
+  }
+  .zoom-controls button:last-child {
+    min-width: 40px;
+    font-size: 11px;
+  }
+  .board-color-fixed {
+    bottom: 72px;
+    left: 12px;
+  }
+  .board-color-picker-btn {
+    width: 28px;
+    height: 28px;
+  }
+  .board-color-picker-dot {
+    width: 14px;
+    height: 14px;
+  }
+  .reactions-float-panel {
+    bottom: 12px;
+    right: 12px;
+    padding: 6px 10px;
+    gap: 6px;
+  }
+  .reaction-btn {
+    font-size: 17px;
+    padding: 3px;
+  }
+}
+
+/* ── Export button mobile ───────────────────────────────────── */
+@media (max-width: 640px) {
+  .workspace-export-btn {
+    bottom: 76px;
+    right: 12px;
+  }
+  .workspace-export-btn .toolbar-btn {
+    width: 34px;
+    height: 34px;
+  }
+  .export-dropdown {
+    width: 190px;
+  }
+  .export-dropdown button {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+}
+
+/* ── Activity toasts mobile ─────────────────────────────────── */
+@media (max-width: 640px) {
+  .room-activity-toast-stack {
+    top: 60px;
+    right: 12px;
+  }
+  .room-activity-toast {
+    max-width: 160px;
+    font-size: 0.72rem;
+    padding: 4px 10px;
+  }
+}
+
+/* ── Lobby/setup mobile: title sizing ───────────────────────── */
+@media (max-width: 480px) {
+  .lobby-title {
+    font-size: 32px;
+    letter-spacing: -1.5px;
+  }
+  .lobby-subtitle {
+    font-size: 15px;
+  }
+}
+
+/* ── General safe area / tap targets ────────────────────────── */
+@media (max-width: 640px) {
+  /* Ensure clickable elements are at least 40px for touch */
+  .db-nav-item,
+  .db-create-btn,
+  .members-panel-kick-btn,
+  .settings-panel button,
+  .activity-panel button {
+    min-height: 40px;
+  }
+  /* Prevent horizontal overflow */
+  .db-page,
+  .workspace-container {
+    overflow-x: hidden;
+  }
+  .chat-on-light-board .chat-emoji-picker-full {
+    position: fixed;
+    left: 8px;
+    right: 8px;
+    width: auto;
   }
 }
 

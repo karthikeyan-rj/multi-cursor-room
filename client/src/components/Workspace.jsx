@@ -316,6 +316,20 @@ export default function Workspace({
         onMouseUp={onCanvasMouseUp}
         onMouseLeave={onCanvasMouseUp}
         onContextMenu={(e) => e.preventDefault()}
+        onTouchStart={(e) => {
+          e.preventDefault();
+          const touch = e.touches[0];
+          onCanvasMouseDown({ clientX: touch.clientX, clientY: touch.clientY, button: 0, preventDefault: () => {} });
+        }}
+        onTouchMove={(e) => {
+          e.preventDefault();
+          const touch = e.touches[0];
+          onCanvasMouseMove({ clientX: touch.clientX, clientY: touch.clientY, button: 0, preventDefault: () => {} });
+        }}
+        onTouchEnd={(e) => {
+          e.preventDefault();
+          onCanvasMouseUp();
+        }}
       />
 
       {textInput && (

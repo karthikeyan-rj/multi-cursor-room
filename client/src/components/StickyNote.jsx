@@ -28,6 +28,7 @@ export default function StickyNote({ note, onNoteMouseDown, onNoteUpdate, onNote
       className="sticky-note-element"
       style={{ left: note.x, top: note.y, backgroundColor: note.color || '#FFEAA7', color: '#11131c' }}
       onMouseDown={(e) => onNoteMouseDown(note.id, e)}
+      onTouchStart={(e) => onNoteMouseDown(note.id, e)}
     >
       <div className="sticky-note-header">
         <span>By {note.creator_name}</span>
