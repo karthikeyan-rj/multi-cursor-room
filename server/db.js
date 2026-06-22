@@ -6,11 +6,17 @@ let db = null;
 
 const mongoUri = process.env.MONGODB_URI;
 
-// Map MongoDB doc → clean object (remove internal _id)
+// Map MongoDB doc → clean object (remove internal _id), add permission defaults for old rooms
 function mapDoc(doc) {
   if (!doc) return null;
   const { _id, ...rest } = doc;
-  return rest;
+  return {
+    ...rest,
+    allowChat: rest.allowChat !== undefined ? rest.allowChat : true,
+    allowFiles: rest.allowFiles !== undefined ? rest.allowFiles : true,
+    allowDrawing: rest.allowDrawing !== undefined ? rest.allowDrawing : true,
+    allowStickyNotes: rest.allowStickyNotes !== undefined ? rest.allowStickyNotes : true
+  };
 }
 
 async function initDb() {
@@ -220,6 +226,10 @@ async function createRoom(id, roomName, passwordHash, ownerId, ownerEmail, owner
     ownerEmail,
     ownerName,
     boardColor: '#000000',
+    allowChat: true,
+    allowFiles: true,
+    allowDrawing: true,
+    allowStickyNotes: true,
     createdAt: now,
     created_at: now,
     participants: [
@@ -635,6 +645,70 @@ async function getRoomMembers(roomId) {
   return room || { participants: [], ownerId: null, ownerName: null };
 }
 
+async function addActivity(roomId, type, username, message) {
+  if (!roomId || !type || !username) return;
+  const activity = {
+    type,
+    username,
+    message: message || `${username} ${type}`,
+    createdAt: new Date()
+  };
+  try {
+    await db.collection('rooms').updateOne(
+      { _id: roomId },
+      {
+        $push: {
+          activities: {
+            $each: [activity],
+            $sort: { createdAt: -1 },
+            $slice: 50
+          }
+        }
+      }
+    );
+  } catch (err) {
+    console.error('Failed to add activity:', err.message);
+  }
+}
+
+async function getActivities(roomId, limit = 50) {
+  try {
+    const room = await db.collection('rooms').findOne(
+      { _id: roomId },
+      { projection: { activities: { $slice: limit } } }
+    );
+    return (room?.activities || []).reverse();
+  } catch (err) {
+    console.error('Failed to get activities:', err.message);
+    return [];
+  }
+}
+
+async function updateRoomSettings(roomId, updateFields) {
+  await db.collection('rooms').updateOne(
+    { _id: roomId },
+    { $set: updateFields }
+  );
+  return true;
+}
+
+async function getRoomSettings(roomId) {
+  const room = await db.collection('rooms').findOne(
+    { _id: roomId },
+    { projection: { name: 1, roomName: 1, roomId: 1, ownerId: 1, allowChat: 1, allowFiles: 1, allowDrawing: 1, allowStickyNotes: 1 } }
+  );
+  if (!room) return null;
+  return {
+    name: room.name || room.roomName,
+    roomId: room.roomId,
+    ownerId: room.ownerId,
+    allowChat: room.allowChat !== undefined ? room.allowChat : true,
+    allowFiles: room.allowFiles !== undefined ? room.allowFiles : true,
+    allowDrawing: room.allowDrawing !== undefined ? room.allowDrawing : true,
+    allowStickyNotes: room.allowStickyNotes !== undefined ? room.allowStickyNotes : true
+  };
+}
+
 module.exports = {
   initDb,
   getRooms,
@@ -672,5 +746,9 @@ module.exports = {
   getJoinRequests,
   getRoomMembers,
   updateUserPassword,
-  updateUserProfile
+  updateUserProfile,
+  addActivity,
+  getActivities,
+  updateRoomSettings,
+  getRoomSettings
 };

@@ -4,6 +4,8 @@ import TopNav from './TopNav';
 import FloatingToolbar from './FloatingToolbar';
 import ChatDrawer from './ChatDrawer';
 import RoomMembersPanel from './RoomMembersPanel';
+import ActivityPanel from './ActivityPanel';
+import RoomSettingsPanel from './RoomSettingsPanel';
 import StickyNote from './StickyNote';
 import RemoteCursorOverlay from './RemoteCursorOverlay';
 import CursorTrail from './CursorTrail';
@@ -39,7 +41,8 @@ export default function Workspace({
   onNoteMouseDown, onNoteUpdate, onNoteDelete, onCopy,
   viewport, isPanning, onZoomIn, onZoomOut, onZoomReset,
   boardColor, onSetBoardColor,
-  replyingTo, onSetReplyTarget, onCancelReply
+  replyingTo, onSetReplyTarget, onCancelReply,
+  roomAllowChat, roomAllowFiles, roomAllowDrawing, roomAllowStickyNotes
 }) {
   const [tempText, setTempText] = useState('');
   const [hideLocalCursor, setHideLocalCursor] = useState(false);
@@ -47,8 +50,16 @@ export default function Workspace({
   const [membersOpen, setMembersOpen] = useState(false);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const [activityToasts, setActivityToasts] = useState([]);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [roomName, setRoomName] = useState(currentRoomName);
   const toastTimeoutsRef = useRef([]);
+  const idleTimerRef = useRef(null);
+  const lastActivityRef = useRef(null);
+  lastActivityRef.current = Date.now();
   const isLightBoard = useMemo(() => boardColor ? getLuminance(boardColor) > 0.55 : false, [boardColor]);
+  const isOwner = String(roomOwnerId) === String(userId);
 
   const fetchPendingRequestsCount = useCallback(async () => {
     if (!currentRoomDisplayId) return;
@@ -60,7 +71,6 @@ export default function Workspace({
       if (!membersRes.ok) return;
       const membersData = await membersRes.json();
       if (membersData.success) {
-        // Only owner cares about pending requests
         if (String(membersData.ownerId) !== String(userId)) {
           setPendingRequestsCount(0);
           return;
@@ -68,7 +78,7 @@ export default function Workspace({
         const pending = (membersData.joinRequests || []).filter(r => r.status === 'pending').length;
         setPendingRequestsCount(pending);
       }
-    } catch (err) {
+    } catch (_) {
       // Silently fail
     }
   }, [currentRoomDisplayId, userId, SERVER_URL]);
@@ -101,11 +111,6 @@ export default function Workspace({
     };
   }, []);
 
-  const handleLeaveRoom = () => {
-    setShowLeaveConfirm(false);
-    onLeaveRoom();
-  };
-
   useEffect(() => {
     const handler = (e) => {
       setHideLocalCursor(isNativeCursorElement(e.target));
@@ -113,6 +118,26 @@ export default function Workspace({
     document.addEventListener('mousemove', handler, { passive: true });
     return () => document.removeEventListener('mousemove', handler);
   }, []);
+
+  // Idle detection for presence status
+  useEffect(() => {
+    const resetIdle = () => {
+      lastActivityRef.current = Date.now();
+      clearTimeout(idleTimerRef.current);
+    };
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll'];
+    events.forEach(e => document.addEventListener(e, resetIdle, { passive: true }));
+    resetIdle();
+    return () => {
+      events.forEach(e => document.removeEventListener(e, resetIdle));
+      clearTimeout(idleTimerRef.current);
+    };
+  }, []);
+
+  const handleLeaveRoom = () => {
+    setShowLeaveConfirm(false);
+    onLeaveRoom();
+  };
 
   const handleTextKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -139,12 +164,81 @@ export default function Workspace({
     setTempText('');
   };
 
+  // Export functions
+  const handleExportChat = () => {
+    if (!chatHistory || chatHistory.length === 0) return;
+    const lines = [
+      `Room: ${roomName || currentRoomName}`,
+      `Room ID: ${currentRoomDisplayId}`,
+      `Exported: ${new Date().toLocaleString()}`,
+      '',
+      ...chatHistory.map(msg => {
+        const time = new Date(msg.created_at || msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        const sender = msg.sender_name || msg.senderName || 'Unknown';
+        const text = msg.message || msg.text || '';
+        return `[${time}] ${sender}: ${text}`;
+      })
+    ].join('\n');
+    downloadFile(lines, `${(roomName || currentRoomName || 'room').replace(/\s+/g, '-')}-chat-${new Date().toISOString().split('T')[0]}.txt`, 'text/plain');
+    setShowExportMenu(false);
+  };
+
+  const handleExportStickyNotes = () => {
+    if (!stickyNotes || stickyNotes.length === 0) return;
+    const data = stickyNotes.map(n => ({
+      text: n.text,
+      createdBy: n.creator_name || n.creatorName || 'Unknown',
+      createdAt: n.created_at || n.createdAt
+    }));
+    downloadFile(JSON.stringify(data, null, 2), `${(roomName || currentRoomName || 'room').replace(/\s+/g, '-')}-notes-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
+    setShowExportMenu(false);
+  };
+
+  const handleExportSummary = async () => {
+    const token = localStorage.getItem('cursor_room_token');
+    let members = [];
+    try {
+      const res = await fetch(`${SERVER_URL}/api/rooms/${currentRoomDisplayId}/members`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) members = data.participants || [];
+    } catch (_) { /* ignore */ }
+    const summary = {
+      roomName: roomName || currentRoomName,
+      roomId: currentRoomDisplayId,
+      exportedAt: new Date().toISOString(),
+      owner: roomCreatedBy,
+      participants: members.map(m => ({ username: m.username || m.email, joinedAt: m.joinedAt })),
+      chatCount: chatHistory?.length || 0,
+      stickyNoteCount: stickyNotes?.length || 0
+    };
+    downloadFile(JSON.stringify(summary, null, 2), `${(roomName || currentRoomName || 'room').replace(/\s+/g, '-')}-summary-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
+    setShowExportMenu(false);
+  };
+
+  const downloadFile = (content, filename, mimeType) => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleRoomNameChange = (newName) => {
+    setRoomName(newName);
+  };
+
   return (
     <div className={`workspace-container ${isLightBoard ? 'light-board' : 'dark-board'}`} onClick={canvasClick}>
       <div className="grid-background" style={boardColor ? { backgroundColor: boardColor } : undefined} />
 
       <TopNav
-        roomName={currentRoomName}
+        roomName={roomName || currentRoomName}
         roomDisplayId={currentRoomDisplayId}
         roomInternalId={currentRoomId}
         userId={userId}
@@ -165,7 +259,34 @@ export default function Workspace({
         onToggleMembers={() => setMembersOpen(v => !v)}
         membersOpen={membersOpen}
         pendingRequestsCount={pendingRequestsCount}
+        onToggleActivity={() => setActivityOpen(v => !v)}
+        activityOpen={activityOpen}
+        onToggleSettings={() => setSettingsOpen(v => !v)}
+        settingsOpen={settingsOpen}
       />
+
+      <div className="workspace-export-btn" title="Export Room Data">
+        <button className="toolbar-btn export-trigger" onClick={() => setShowExportMenu(v => !v)}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        </button>
+        {showExportMenu && (
+          <div className="export-dropdown">
+            <button onClick={handleExportChat} disabled={!chatHistory || chatHistory.length === 0}>
+              Export Chat (.txt)
+            </button>
+            <button onClick={handleExportStickyNotes} disabled={!stickyNotes || stickyNotes.length === 0}>
+              Export Sticky Notes (.json)
+            </button>
+            <button onClick={handleExportSummary}>
+              Export Room Summary (.json)
+            </button>
+          </div>
+        )}
+      </div>
 
       {activityToasts.length > 0 && (
         <div className="room-activity-toast-stack">
@@ -266,6 +387,8 @@ export default function Workspace({
         onClearBoard={onClearBoard}
         onSendReaction={onSendReaction}
         onUndo={onUndo}
+        allowDrawing={roomAllowDrawing}
+        allowStickyNotes={roomAllowStickyNotes}
       />
 
       <ChatDrawer
@@ -283,6 +406,8 @@ export default function Workspace({
         replyingTo={replyingTo}
         onSetReplyTarget={onSetReplyTarget}
         onCancelReply={onCancelReply}
+        allowChat={roomAllowChat}
+        allowFiles={roomAllowFiles}
       />
 
       {membersOpen && (
@@ -294,6 +419,28 @@ export default function Workspace({
           cursorColor={cursorColor}
           remoteCursors={remoteCursors}
           onClose={() => setMembersOpen(false)}
+        />
+      )}
+
+      {activityOpen && (
+        <ActivityPanel
+          roomDisplayId={currentRoomDisplayId}
+          onClose={() => setActivityOpen(false)}
+        />
+      )}
+
+      {settingsOpen && isOwner && (
+        <RoomSettingsPanel
+          roomDisplayId={currentRoomDisplayId}
+          roomInternalId={currentRoomId}
+          roomName={roomName || currentRoomName}
+          userId={userId}
+          isOwner={isOwner}
+          isLightBoard={isLightBoard}
+          onClose={() => setSettingsOpen(false)}
+          onDeleteRoom={onDeleteRoom}
+          onCopy={onCopy}
+          onRoomNameChange={handleRoomNameChange}
         />
       )}
 

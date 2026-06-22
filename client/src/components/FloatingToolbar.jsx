@@ -16,7 +16,7 @@ function PopoverPanel({ show, onClose, children, className = '' }) {
 }
 
 export default function FloatingToolbar({
-  activeTool, brushColor, brushWidth, onSetTool, onSetBrushColor, onSetBrushWidth, onClearCanvas, onClearBoard, onSendReaction, onUndo, canvasRef
+  activeTool, brushColor, brushWidth, onSetTool, onSetBrushColor, onSetBrushWidth, onClearCanvas, onClearBoard, onSendReaction, onUndo, canvasRef, allowDrawing = true, allowStickyNotes = true
 }) {
   const [showEmoji, setShowEmoji] = useState(false);
   const [showColor, setShowColor] = useState(false);
@@ -50,33 +50,33 @@ export default function FloatingToolbar({
           <path d="M18 8a2 2 0 0 1 4 0v6a8 8 0 0 1-8 8h-2c-2.21 0-4.21-.9-5.66-2.34L2.5 15.5a1.5 1.5 0 0 1 2.12-2.12L6 14.66" />
         </svg>
       </button>
-      <button className={`toolbar-btn ${activeTool === 'draw' ? 'active' : ''}`} onClick={() => onSetTool('draw')} title="Pen (P)">
+      <button className={`toolbar-btn ${activeTool === 'draw' ? 'active' : ''}${!allowDrawing ? ' disabled' : ''}`} onClick={() => allowDrawing && onSetTool('draw')} title={allowDrawing ? "Pen (P)" : "Drawing disabled by owner"}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M12 20h9" /><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
         </svg>
       </button>
-      <button className={`toolbar-btn ${activeTool === 'line' ? 'active' : ''}`} onClick={() => onSetTool('line')} title="Line (L)">
+      <button className={`toolbar-btn ${activeTool === 'line' ? 'active' : ''}${!allowDrawing ? ' disabled' : ''}`} onClick={() => allowDrawing && onSetTool('line')} title={allowDrawing ? "Line (L)" : "Drawing disabled by owner"}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
           <line x1="4" y1="20" x2="20" y2="4" />
         </svg>
       </button>
-      <button className={`toolbar-btn ${activeTool === 'rect' ? 'active' : ''}`} onClick={() => onSetTool('rect')} title="Rectangle (R)">
+      <button className={`toolbar-btn ${activeTool === 'rect' ? 'active' : ''}${!allowDrawing ? ' disabled' : ''}`} onClick={() => allowDrawing && onSetTool('rect')} title={allowDrawing ? "Rectangle (R)" : "Drawing disabled by owner"}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect width="18" height="14" x="3" y="5" rx="1" />
         </svg>
       </button>
-      <button className={`toolbar-btn ${activeTool === 'circle' ? 'active' : ''}`} onClick={() => onSetTool('circle')} title="Circle (C)">
+      <button className={`toolbar-btn ${activeTool === 'circle' ? 'active' : ''}${!allowDrawing ? ' disabled' : ''}`} onClick={() => allowDrawing && onSetTool('circle')} title={allowDrawing ? "Circle (C)" : "Drawing disabled by owner"}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <circle cx="12" cy="12" r="9" />
         </svg>
       </button>
-      <button className={`toolbar-btn ${activeTool === 'text' ? 'active' : ''}`} onClick={() => onSetTool('text')} title="Text (T)">
+      <button className={`toolbar-btn ${activeTool === 'text' ? 'active' : ''}${!allowDrawing ? ' disabled' : ''}`} onClick={() => allowDrawing && onSetTool('text')} title={allowDrawing ? "Text (T)" : "Drawing disabled by owner"}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <polyline points="4 7 4 4 20 4 20 7" /><line x1="9" x2="15" y1="20" y2="20" /><line x1="12" x2="12" y1="4" y2="20" />
         </svg>
       </button>
       <div className="toolbar-divider" />
-      <button className={`toolbar-btn ${activeTool === 'eraser' ? 'active' : ''}`} onClick={() => onSetTool('eraser')} title="Eraser (E)">
+      <button className={`toolbar-btn ${activeTool === 'eraser' ? 'active' : ''}${!allowDrawing ? ' disabled' : ''}`} onClick={() => allowDrawing && onSetTool('eraser')} title={allowDrawing ? "Eraser (E)" : "Drawing disabled by owner"}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M20 20H7L3 16c-.8-.8-.8-2 0-2.8l9.2-9.2a2 2 0 0 1 2.8 0l5.6 5.6a2 2 0 0 1 0 2.8L16 17" />
           <path d="M6.5 13.5 12 19" />
@@ -122,7 +122,7 @@ export default function FloatingToolbar({
         </PopoverPanel>
       </div>
       <div className="toolbar-divider" />
-      <button className={`toolbar-btn ${activeTool === 'sticky' ? 'active' : ''}`} onClick={() => onSetTool('sticky')} title="Sticky Note (S)">
+      <button className={`toolbar-btn ${activeTool === 'sticky' ? 'active' : ''}${!allowStickyNotes ? ' disabled' : ''}`} onClick={() => allowStickyNotes && onSetTool('sticky')} title={allowStickyNotes ? "Sticky Note (S)" : "Sticky notes disabled by owner"}>
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect width="18" height="18" x="3" y="3" rx="2" /><path d="M16 8h-8v8" /><path d="M8 8h8v8" /><path d="M15 3v4a1 1 0 0 0 1 1h4" /><path d="m14.3 14.3 5.7 5.7" />
         </svg>

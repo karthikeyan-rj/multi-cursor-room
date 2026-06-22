@@ -1,4 +1,4 @@
-export default function TopNav({ roomName, roomDisplayId, roomInternalId, userId, userEmail, roomOwnerId, username, roomCreatedBy, cursorColor, remoteCursors, chatOpen, onToggleChat, onCopy, unreadCount, isLightBoard, onLeaveRoomRequest, onToggleMembers, membersOpen, pendingRequestsCount }) {
+export default function TopNav({ roomName, roomDisplayId, roomInternalId, userId, userEmail, roomOwnerId, username, roomCreatedBy, cursorColor, remoteCursors, chatOpen, onToggleChat, onCopy, unreadCount, isLightBoard, onLeaveRoomRequest, onToggleMembers, membersOpen, pendingRequestsCount, onToggleActivity, activityOpen, onToggleSettings, settingsOpen }) {
   const isCurrentUserOwner =
     String(roomOwnerId) === String(userId) ||
     userEmail === roomCreatedBy;
@@ -6,6 +6,8 @@ export default function TopNav({ roomName, roomDisplayId, roomInternalId, userId
   const ownerLabel = roomCreatedBy
     ? `${roomCreatedBy}'s Room`
     : roomName;
+
+  const onlineCount = remoteCursors ? Object.keys(remoteCursors).length : 0;
 
   return (
     <>
@@ -37,10 +39,37 @@ export default function TopNav({ roomName, roomDisplayId, roomInternalId, userId
               <button className="room-copy-btn" onClick={() => onCopy(roomDisplayId || '')} title="Copy Room ID">
                 Copy
               </button>
+              <span className="room-online-count" title="Online members">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none" style={{ marginRight: 3, verticalAlign: 'middle' }}>
+                  <circle cx="12" cy="12" r="10" />
+                </svg>
+                {onlineCount} online
+              </span>
             </div>
           </div>
         </div>
       <div className="nav-right">
+        <button
+          className={`toolbar-btn ${activityOpen ? 'active' : ''}`}
+          onClick={onToggleActivity}
+          title="Room Activity"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+          </svg>
+        </button>
+        {isCurrentUserOwner && (
+          <button
+            className={`toolbar-btn ${settingsOpen ? 'active' : ''}`}
+            onClick={onToggleSettings}
+            title="Room Settings"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+        )}
         <button
           className={`toolbar-btn ${membersOpen ? 'active' : ''}`}
           onClick={onToggleMembers}

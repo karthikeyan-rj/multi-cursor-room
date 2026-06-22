@@ -124,6 +124,10 @@ export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, use
 
   const isUserOnline = (memberUserId) => onlineUserIds.has(String(memberUserId));
 
+  const onlineCount = useMemo(() => {
+    return members.filter(m => onlineUserIds.has(String(m.userId))).length + (onlineUserIds.has(String(ownerId)) ? 1 : 0);
+  }, [members, ownerId, onlineUserIds]);
+
   const otherParticipants = members.filter(m => !isSameUser({ userId: m.userId }, { userId: ownerId }));
 
   const currentUserObj = { userId, email: userEmail };
@@ -131,7 +135,7 @@ export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, use
   return (
     <div className="members-panel glass" onClick={e => e.stopPropagation()}>
       <div className="members-panel-header">
-        <h3 className="members-panel-title">Room Members</h3>
+        <h3 className="members-panel-title">Room Members <span className="members-online-count">{onlineCount} online</span></h3>
         <button className="members-panel-close" onClick={onClose} aria-label="Close">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -155,7 +159,9 @@ export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, use
                 </span>
                 <span className="members-panel-badge owner-badge">Owner</span>
               </div>
-              {isUserOnline(ownerId) && <span className="members-panel-online-dot" />}
+              <span className={`members-presence-badge ${isUserOnline(ownerId) ? 'online' : 'offline'}`}>
+                {isUserOnline(ownerId) ? 'Online' : 'Offline'}
+              </span>
             </div>
 
             <div className="members-panel-section-label">Participants</div>
@@ -175,7 +181,9 @@ export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, use
                         {isYou && <span className="members-panel-you"> (You)</span>}
                       </span>
                     </div>
-                    {isUserOnline(member.userId) && <span className="members-panel-online-dot" />}
+                    <span className={`members-presence-badge ${isUserOnline(member.userId) ? 'online' : 'offline'}`}>
+                      {isUserOnline(member.userId) ? 'Online' : 'Offline'}
+                    </span>
                     {isOwner && !isYou && (
                       <button
                         className="members-panel-kick-btn"

@@ -125,6 +125,12 @@ const activeUsers = {};
 // Structure: { [socketId]: { userId, username } | null }
 const socketUserMap = {};
 
+// Helper: persist activity and emit real-time event to room
+function emitActivity(io, roomId, type, username, message) {
+  io.to(roomId).emit('room:activity-event', { type, username, message, createdAt: new Date() });
+  db.addActivity(roomId, type, username, message).catch(err => console.error('emitActivity error:', err));
+}
+
 // HTTP REST API - Authentication Routes
 app.post('/api/auth/signup', async (req, res) => {
   try {
@@ -425,6 +431,7 @@ app.post('/api/rooms/join', authenticateToken, async (req, res) => {
     if (isKicked) {
       await db.addJoinRequest(room.id, req.user.userId, req.user.email, req.user.username);
       const io = req.app.get('io');
+      emitActivity(io, room.id, 'join_request', req.user.username, `${req.user.username} requested to join`);
       io.to(room.id).emit('room-members-updated', { ownerId: room.ownerId });
       return res.status(202).json({
         success: true,
@@ -627,6 +634,86 @@ app.delete('/api/rooms/:roomId', authenticateToken, async (req, res) => {
   }
 });
 
+// Get room activities
+app.get('/api/rooms/:roomId/activities', authenticateToken, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = await db.getRoomByRoomId(roomId.trim());
+    if (!room) return res.status(404).json({ success: false, error: 'Room not found.' });
+
+    const isMember = room.ownerId === req.user.userId ||
+      (room.participants && room.participants.some(p => p.userId === req.user.userId));
+    if (!isMember) return res.status(403).json({ success: false, error: 'Access denied.' });
+
+    const activities = await db.getActivities(room.id);
+    res.json({ success: true, activities });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Update room settings (owner only)
+app.post('/api/rooms/:roomId/settings', authenticateToken, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = await db.getRoomByRoomId(roomId.trim());
+    if (!room) return res.status(404).json({ success: false, error: 'Room not found.' });
+
+    if (room.ownerId !== req.user.userId) {
+      return res.status(403).json({ success: false, error: 'Only the room owner can change settings.' });
+    }
+
+    const updates = {};
+    const { name, password, allowChat, allowFiles, allowDrawing, allowStickyNotes } = req.body;
+
+    if (name && name.trim()) {
+      updates.name = name.trim();
+      updates.roomName = name.trim();
+    }
+
+    if (password) {
+      if (password.length < 6) {
+        return res.status(400).json({ success: false, error: 'Password must be at least 6 characters.' });
+      }
+      updates.passwordHash = await bcrypt.hash(password, 10);
+    }
+
+    if (allowChat !== undefined) updates.allowChat = Boolean(allowChat);
+    if (allowFiles !== undefined) updates.allowFiles = Boolean(allowFiles);
+    if (allowDrawing !== undefined) updates.allowDrawing = Boolean(allowDrawing);
+    if (allowStickyNotes !== undefined) updates.allowStickyNotes = Boolean(allowStickyNotes);
+
+    await db.updateRoomSettings(room.id, updates);
+    await emitActivity(io, room.id, 'settings', req.user.username, `${req.user.username} updated room settings`);
+
+    io.to(room.id).emit('room-members-updated', { ownerId: room.ownerId });
+
+    res.json({ success: true, message: 'Room settings updated.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Get room settings (for settings panel)
+app.get('/api/rooms/:roomId/settings', authenticateToken, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = await db.getRoomByRoomId(roomId.trim());
+    if (!room) return res.status(404).json({ success: false, error: 'Room not found.' });
+
+    const isMember = room.ownerId === req.user.userId ||
+      (room.participants && room.participants.some(p => p.userId === req.user.userId));
+    if (!isMember) return res.status(403).json({ success: false, error: 'Access denied.' });
+
+    const settings = await db.getRoomSettings(room.id);
+    if (!settings) return res.status(404).json({ success: false, error: 'Settings not found.' });
+
+    res.json({ success: true, settings: { ...settings, isOwner: room.ownerId === req.user.userId } });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Socket.io Real-time Operations
 io.on('connection', (socket) => {
   let currentRoomId = null;
@@ -725,6 +812,11 @@ io.on('connection', (socket) => {
         roomCreatedBy: room.ownerName,
         roomOwnerId: room.ownerId,
         boardColor: room.boardColor || null,
+        roomName: room.name || room.roomName,
+        allowChat: room.allowChat !== undefined ? room.allowChat : true,
+        allowFiles: room.allowFiles !== undefined ? room.allowFiles : true,
+        allowDrawing: room.allowDrawing !== undefined ? room.allowDrawing : true,
+        allowStickyNotes: room.allowStickyNotes !== undefined ? room.allowStickyNotes : true,
         activeUsers: Object.values(activeUsers[roomId])
       });
 
@@ -737,6 +829,7 @@ io.on('connection', (socket) => {
         userId,
         message: `${displayName} joined`
       });
+      emitActivity(io, roomId, 'join', displayName, `${displayName} joined`);
       // Broadcast updated members list to all (including the new user)
       io.to(roomId).emit('room-members-updated', { ownerId: room.ownerId });
     } catch (err) {
@@ -832,10 +925,12 @@ io.on('connection', (socket) => {
   // Canvas clear
   socket.on('clear_canvas', async () => {
     if (!currentRoomId) return;
+    const user = activeUsers[currentRoomId]?.[socket.id];
 
     try {
       await db.clearDrawings(currentRoomId);
       io.to(currentRoomId).emit('canvas_cleared');
+      if (user) emitActivity(io, currentRoomId, 'canvas', user.name, `${user.name} cleared the canvas`);
     } catch (err) {
       console.error('Failed to clear canvas:', err.message);
     }
@@ -844,11 +939,13 @@ io.on('connection', (socket) => {
   // Board: clear all (drawings + sticky notes)
   socket.on('board:clear-all', async () => {
     if (!currentRoomId) return;
+    const user = activeUsers[currentRoomId]?.[socket.id];
 
     try {
       await db.clearDrawings(currentRoomId);
       await db.clearStickyNotes(currentRoomId);
       io.to(currentRoomId).emit('board:all-cleared');
+      if (user) emitActivity(io, currentRoomId, 'canvas', user.name, `${user.name} cleared the board`);
     } catch (err) {
       console.error('Failed to clear board:', err.message);
     }
@@ -862,6 +959,7 @@ io.on('connection', (socket) => {
     try {
       const note = await db.saveStickyNote(id, currentRoomId, x, y, text || '', color, user.name);
       io.to(currentRoomId).emit('sticky_added', note);
+      emitActivity(io, currentRoomId, 'sticky', user.name, `${user.name} added a sticky note`);
     } catch (err) {
       console.error('Failed to create sticky note:', err.message);
     }
@@ -898,9 +996,11 @@ io.on('connection', (socket) => {
   socket.on('board_color_change', async ({ color }) => {
     if (!currentRoomId) return;
     if (color !== null && !/^#[0-9A-Fa-f]{6}$/.test(color)) return;
+    const user = activeUsers[currentRoomId]?.[socket.id];
     io.to(currentRoomId).emit('board_color_changed', { color });
     try {
       await db.setBoardColor(currentRoomId, color);
+      if (user) emitActivity(io, currentRoomId, 'board', user.name, `${user.name} changed board color`);
     } catch (err) {
       console.error('Failed to save board color:', err.message);
     }
@@ -984,6 +1084,7 @@ io.on('connection', (socket) => {
         userId: user.userId,
         message: `${user.name} left`
       });
+      emitActivity(io, currentRoomId, 'leave', user.name, `${user.name} left`);
       io.to(currentRoomId).emit('room-members-updated', {});
       delete activeUsers[currentRoomId][socket.id];
       socket.leave(currentRoomId);
@@ -1043,6 +1144,7 @@ io.on('connection', (socket) => {
         userId: targetUserId,
         message: `${targetUsername} was kicked`
       });
+      emitActivity(io, roomId, 'kick', targetUsername, `${targetUsername} was kicked`);
       // Notify remaining members
       io.to(roomId).emit('room-members-updated', { action: 'kicked', targetUserId });
       // Remove kicked user's cursor from all remaining clients
@@ -1066,6 +1168,7 @@ io.on('connection', (socket) => {
         userId: user.userId,
         message: `${user.name} left`
       });
+      emitActivity(io, currentRoomId, 'leave', user.name, `${user.name} left`);
 
       delete activeUsers[currentRoomId][socket.id];
       console.log(`👤 User "${user.name}" left room "${currentRoomId}"`);

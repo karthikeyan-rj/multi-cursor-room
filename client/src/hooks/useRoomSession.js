@@ -40,6 +40,10 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [boardColor, setBoardColor] = useState(null);
   const [isPanning, setIsPanning] = useState(false);
+  const [roomAllowChat, setRoomAllowChat] = useState(true);
+  const [roomAllowFiles, setRoomAllowFiles] = useState(true);
+  const [roomAllowDrawing, setRoomAllowDrawing] = useState(true);
+  const [roomAllowStickyNotes, setRoomAllowStickyNotes] = useState(true);
   const [panStart, setPanStart] = useState(null);
   const canvasRef = useRef(null);
   const chatOpenRef = useRef(chatOpen);
@@ -87,7 +91,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
 
     const hasLoadedInitialMessagesRef = { current: false };
 
-    socket.on('room_data', ({ drawings, stickyNotes, chatHistory, fileMessages, roomCreatedBy, roomOwnerId, boardColor, activeUsers }) => {
+    socket.on('room_data', ({ drawings, stickyNotes, chatHistory, fileMessages, roomCreatedBy, roomOwnerId, boardColor, roomName, allowChat, allowFiles, allowDrawing, allowStickyNotes, activeUsers }) => {
       unlockMessageSound();
       setDrawings(drawings.map(d => ({ ...d, id: d.stroke_id || d.id })));
       setStickyNotes(stickyNotes);
@@ -99,6 +103,11 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       if (roomCreatedBy) setRoomCreatedBy(roomCreatedBy);
       if (roomOwnerId) setRoomOwnerId(roomOwnerId);
       if (boardColor) setBoardColor(boardColor);
+      if (roomName) setCurrentRoomName(roomName);
+      setRoomAllowChat(allowChat !== undefined ? allowChat : true);
+      setRoomAllowFiles(allowFiles !== undefined ? allowFiles : true);
+      setRoomAllowDrawing(allowDrawing !== undefined ? allowDrawing : true);
+      setRoomAllowStickyNotes(allowStickyNotes !== undefined ? allowStickyNotes : true);
       const userMap = {};
       activeUsers.forEach(u => { if (u.id !== socket.id) userMap[u.id] = u; });
       setRemoteCursors(userMap);
@@ -622,6 +631,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
     handleBoardClick,
     handleNoteMouseDown, updateStickyText, deleteSticky,
     sendReaction, handleSendChat, handlePlaceText,
-    replyingTo, setReplyingTo, handleCancelReply
+    replyingTo, setReplyingTo, handleCancelReply,
+    roomAllowChat, roomAllowFiles, roomAllowDrawing, roomAllowStickyNotes
   };
 }

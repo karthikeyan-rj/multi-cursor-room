@@ -452,6 +452,10 @@ function RoomRouteWrapper({
       replyingTo={session.replyingTo}
       onSetReplyTarget={session.setReplyingTo}
       onCancelReply={session.handleCancelReply}
+      roomAllowChat={session.roomAllowChat}
+      roomAllowFiles={session.roomAllowFiles}
+      roomAllowDrawing={session.roomAllowDrawing}
+      roomAllowStickyNotes={session.roomAllowStickyNotes}
     />
   );
 }

@@ -105,6 +105,11 @@ router.post('/:roomId/files', authenticateToken, (req, res) => {
       const io = req.app.get('io');
       if (io) {
         io.to(roomId).emit('room:file-message', fileMsg);
+        const emitActivity = (roomId, type, username, message) => {
+          io.to(roomId).emit('room:activity-event', { type, username, message, createdAt: new Date() });
+          db.addActivity(roomId, type, username, message).catch(() => {});
+        };
+        emitActivity(roomId, 'file', username, `${username} uploaded ${cleanName}`);
       }
 
       res.status(201).json({ success: true, file: fileMsg });
