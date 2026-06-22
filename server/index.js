@@ -62,16 +62,6 @@ app.use(cors(corsOptions));
 // File upload routes
 app.use('/api/rooms', fileRoutes);
 
-// Production: serve the built client
-if (process.env.NODE_ENV === 'production') {
-  const clientDist = path.join(__dirname, '../client/dist');
-  app.use(express.static(clientDist));
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) return next();
-    res.sendFile(path.join(clientDist, 'index.html'));
-  });
-}
-
 // Dev-only: serve local uploaded files and cloudinary debug endpoint
 if (process.env.NODE_ENV !== 'production') {
   app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
@@ -1088,6 +1078,14 @@ io.on('connection', (socket) => {
         delete activeUsers[currentRoomId];
       }
     }
+  });
+});
+
+// 404 fallback for unmatched API routes
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found"
   });
 });
 
