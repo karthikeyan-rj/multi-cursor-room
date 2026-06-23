@@ -1850,6 +1850,93 @@ body {
   transform: scale(0.95);
 }
 
+/* ── Chat Composer (pill-style) ──────────────────── */
+.chat-composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.chat-composer .file-upload-btn {
+  width: 46px !important;
+  height: 46px !important;
+  border-radius: 999px !important;
+  background: rgba(241, 245, 249, 0.92) !important;
+  border: 1px solid rgba(148, 163, 184, 0.35) !important;
+  color: #0f172a !important;
+}
+
+.chat-icon-btn {
+  width: 46px;
+  height: 46px;
+  min-width: 46px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+  background: rgba(241, 245, 249, 0.92);
+  color: #0f172a;
+  transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+}
+
+.chat-icon-btn:hover {
+  transform: translateY(-1px);
+  background: rgba(226, 232, 240, 0.98);
+  border-color: rgba(100, 116, 139, 0.45);
+}
+
+.chat-message-input {
+  flex: 1;
+  min-width: 0;
+  height: 46px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  padding: 0 18px;
+  font-size: 15px;
+  font-weight: 500;
+  outline: none;
+  background: rgba(255, 255, 255, 0.92);
+  color: #0f172a;
+  box-sizing: border-box;
+}
+
+.chat-message-input::placeholder {
+  color: #64748b;
+}
+
+.mic-btn {
+  background: #0f172a;
+  color: #f8fafc;
+  border-color: rgba(15, 23, 42, 0.45);
+}
+
+.mic-btn:hover {
+  background: #1e293b;
+  color: #ffffff;
+  border-color: rgba(15, 23, 42, 0.6);
+}
+
+.mic-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.send-btn {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: rgba(37, 99, 235, 0.55);
+}
+
+.send-btn:hover {
+  background: #3b82f6;
+  border-color: rgba(59, 130, 246, 0.6);
+}
+
 /* Sticky Notes Layer */
 .sticky-note-element {
   position: absolute;
@@ -3190,6 +3277,66 @@ body {
 .chat-on-light-board .chat-emoji-toggle svg,
 .chat-on-light-board .file-message-download svg {
   stroke: #0f172a;
+}
+
+/* ── Chat Composer dark-board overrides ──────────── */
+.chat-on-dark-board .chat-message-input {
+  background: rgba(30, 41, 59, 0.6);
+  border-color: rgba(148, 163, 184, 0.35);
+  color: #f1f5f9;
+}
+
+.chat-on-dark-board .chat-message-input::placeholder {
+  color: #94a3b8;
+}
+
+.chat-on-dark-board .chat-icon-btn {
+  background: rgba(30, 41, 59, 0.6);
+  color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.25);
+}
+
+.chat-on-dark-board .chat-icon-btn:hover {
+  background: rgba(51, 65, 85, 0.7);
+  border-color: rgba(148, 163, 184, 0.4);
+}
+
+.chat-on-dark-board .chat-composer .file-upload-btn {
+  background: rgba(30, 41, 59, 0.6) !important;
+  color: #e2e8f0 !important;
+  border-color: rgba(148, 163, 184, 0.25) !important;
+}
+
+.chat-on-dark-board .chat-composer .file-upload-btn:hover {
+  background: rgba(51, 65, 85, 0.7) !important;
+  border-color: rgba(148, 163, 184, 0.4) !important;
+}
+
+/* Chat Composer light-board overrides */
+.chat-on-light-board .mic-btn svg,
+.chat-on-light-board .send-btn svg {
+  stroke: currentColor;
+}
+
+.chat-on-light-board .chat-message-input {
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(148, 163, 184, 0.5);
+  color: #0f172a;
+}
+
+.chat-on-light-board .chat-message-input:focus {
+  border-color: rgba(37, 99, 235, 0.5);
+}
+
+.chat-on-light-board .chat-icon-btn {
+  background: rgba(241, 245, 249, 0.9);
+  color: #0f172a;
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.chat-on-light-board .chat-icon-btn:hover {
+  background: rgba(226, 232, 240, 0.98);
+  border-color: rgba(100, 116, 139, 0.45);
 }
 
 /* Owner badge near room title */
@@ -6201,6 +6348,10 @@ body {
     font-size: 16px;
     min-height: 40px;
   }
+  .chat-message-input {
+    font-size: 16px;
+    height: 44px;
+  }
   .chat-emoji-picker-full {
     left: 0;
     right: 0;
@@ -6830,6 +6981,10 @@ body {
   }
   .chat-textarea {
     font-size: 13px;
+  }
+  .chat-message-input {
+    font-size: 14px;
+    height: 42px;
   }
 }
 
