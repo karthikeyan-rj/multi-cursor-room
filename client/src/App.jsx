@@ -528,6 +528,14 @@ function RoomRouteWrapper({
       roomAllowFiles={session.roomAllowFiles}
       roomAllowDrawing={session.roomAllowDrawing}
       roomAllowStickyNotes={session.roomAllowStickyNotes}
+      roomAllowPresentation={session.roomAllowPresentation}
+      isPresenting={session.isPresenting}
+      isFollowingPresentation={session.isFollowingPresentation}
+      presenterUserId={session.presenterUserId}
+      presenterName={session.presenterName}
+      startPresenting={session.startPresenting}
+      stopPresenting={session.stopPresenting}
+      presentationLockedToast={session.presentationLockedToast}
     />
   );
 }

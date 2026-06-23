@@ -14,6 +14,7 @@ import BoardColorPicker from './BoardColorPicker';
 import ConfirmationModal from './ConfirmationModal';
 import NavigationGuardModal from './NavigationGuardModal';
 import VoiceCallPanel from './VoiceCallPanel';
+import useVoiceCall from '../hooks/useVoiceCall';
 import { getLuminance } from '../utils/color';
 import { SERVER_URL } from '../config';
 
@@ -30,7 +31,9 @@ export default function Workspace({
   viewport, isPanning, onZoomIn, onZoomOut, onZoomReset,
   boardColor, onSetBoardColor,
   replyingTo, onSetReplyTarget, onCancelReply,
-  roomAllowChat, roomAllowFiles, roomAllowDrawing, roomAllowStickyNotes
+  roomAllowChat, roomAllowFiles, roomAllowDrawing, roomAllowStickyNotes,
+  roomAllowPresentation, isPresenting, isFollowingPresentation, presenterUserId, presenterName,
+  startPresenting, stopPresenting, presentationLockedToast
 }) {
   const [tempText, setTempText] = useState('');
   const [showExportMenu, setShowExportMenu] = useState(false);
@@ -58,6 +61,7 @@ export default function Workspace({
   const [showNavGuard, setShowNavGuard] = useState(false);
   const [activeRoomPanel, setActiveRoomPanel] = useState(null);
   const [showVoiceCall, setShowVoiceCall] = useState(false);
+  const voiceCall = useVoiceCall();
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const [activityToasts, setActivityToasts] = useState([]);
   const [roomActivities, setRoomActivities] = useState([]);
@@ -68,10 +72,12 @@ export default function Workspace({
   lastActivityRef.current = Date.now();
   const isLightBoard = useMemo(() => boardColor ? getLuminance(boardColor) > 0.55 : false, [boardColor]);
   const isOwner = String(roomOwnerId) === String(userId);
+  const canUseBoardTools = isOwner || !isFollowingPresentation;
   const effectiveAllowChat = isOwner || roomAllowChat;
   const effectiveAllowFiles = isOwner || roomAllowFiles;
-  const effectiveAllowDrawing = isOwner || roomAllowDrawing;
-  const effectiveAllowStickyNotes = isOwner || roomAllowStickyNotes;
+  const effectiveAllowDrawing = isOwner || (roomAllowDrawing && canUseBoardTools);
+  const effectiveAllowStickyNotes = isOwner || (roomAllowStickyNotes && canUseBoardTools);
+  const canChangeBoardColor = isOwner || (roomAllowDrawing !== false && !isFollowingPresentation);
 
   const fetchPendingRequestsCount = useCallback(async () => {
     if (!currentRoomDisplayId) return;
@@ -140,6 +146,7 @@ export default function Workspace({
 
   const handleLeaveRoom = () => {
     setShowLeaveConfirm(false);
+    voiceCall.leaveVoiceCall();
     onLeaveRoom();
   };
 
@@ -314,9 +321,38 @@ export default function Workspace({
           onToggleMembers={() => { setShowExportMenu(false); if (chatOpen) onToggleChat(null, false); setActiveRoomPanel(prev => prev === 'members' ? null : 'members'); }}
           pendingRequestsCount={pendingRequestsCount}
           onToggleSettings={() => { setShowExportMenu(false); if (chatOpen) onToggleChat(null, false); setActiveRoomPanel(prev => prev === 'settings' ? null : 'settings'); }}
-          onToggleVoice={() => { setShowExportMenu(false); setShowVoiceCall(prev => !prev); }}
+          onToggleVoice={() => {
+            setShowExportMenu(false);
+            setShowVoiceCall(prev => !prev);
+          }}
           isVoiceActive={showVoiceCall}
+          isVoiceCallConnected={voiceCall.isConnected}
+          voiceCallMuted={voiceCall.isMuted}
+          onLeaveVoiceCall={voiceCall.leaveVoiceCall}
+          isPresenting={isPresenting}
+          isFollowingPresentation={isFollowingPresentation}
+          presenterName={presenterName}
+          onStartPresent={startPresenting}
+          onStopPresent={stopPresenting}
+          roomAllowPresentation={roomAllowPresentation}
+          isOwner={isOwner}
         />
+
+      {isFollowingPresentation && !isPresenting && (
+        <div className="presentation-follower-banner">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+            <circle cx="12" cy="12" r="3" />
+          </svg>
+          Viewing {presenterName || 'presenter'}'s screen &middot; drawing &amp; editing disabled
+        </div>
+      )}
+
+      {presentationLockedToast && (
+        <div className="presentation-locked-toast">
+          {presentationLockedToast} is presenting
+        </div>
+      )}
 
       {activityToasts.length > 0 && (
         <div className="room-activity-toast-stack">
@@ -411,7 +447,7 @@ export default function Workspace({
       </div>
 
       <div className="board-color-fixed">
-        <BoardColorPicker boardColor={boardColor} onColorChange={onSetBoardColor} />
+        <BoardColorPicker boardColor={boardColor} onColorChange={onSetBoardColor} disabled={!canChangeBoardColor} />
       </div>
       <div className="room-bottom-right-controls">
         <div className="zoom-controls">
@@ -490,6 +526,7 @@ export default function Workspace({
           cursorColor={cursorColor}
           onClose={() => setActiveRoomPanel(null)}
           activeUserCount={activeUserCount}
+          isLightBoard={isLightBoard}
         />
       )}
 
@@ -513,7 +550,7 @@ export default function Workspace({
       )}
 
       {showVoiceCall && (
-        <VoiceCallPanel roomId={currentRoomId} onClose={() => setShowVoiceCall(false)} />
+        <VoiceCallPanel roomId={currentRoomId} onClose={() => setShowVoiceCall(false)} voiceCall={voiceCall} isLightBoard={isLightBoard} />
       )}
 
       <CursorTrail color={cursorColor} />

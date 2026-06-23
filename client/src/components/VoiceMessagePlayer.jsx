@@ -83,7 +83,7 @@ export default function VoiceMessagePlayer({ src, duration: propDuration, isOwn 
   const displayTime = isPlaying ? currentTime : (propDuration || duration);
 
   return (
-    <div className={`voice-player ${isOwn ? 'voice-player-own' : ''}`}>
+    <div className="voice-message-player">
       <button
         className={`voice-play-btn ${isPlaying ? 'is-playing' : ''}`}
         onClick={handlePlayPause}
@@ -95,14 +95,14 @@ export default function VoiceMessagePlayer({ src, duration: propDuration, isOwn 
             <rect x="14" y="4" width="4" height="16" rx="1" />
           </svg>
         ) : (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
             <polygon points="8,5 19,12 8,19" />
           </svg>
         )}
       </button>
 
-      <div className="voice-waveform" ref={progressRef} onClick={handleSeek}>
-        <div className="voice-waveform-progress" style={{ width: `${progress}%` }} />
+      <div className="voice-wave-track" ref={progressRef} onClick={handleSeek}>
+        <div className="voice-wave-progress" style={{ width: `${progress}%` }} />
       </div>
 
       <span className="voice-duration">{formatTime(displayTime)}</span>

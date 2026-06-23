@@ -2,7 +2,7 @@ const bcrypt = require('bcrypt');
 const db = require('../db');
 const cloudinary = require('../config/cloudinary');
 const { emitActivity } = require('../sockets/activity');
-const { activeUsers, socketUserMap, emitRoomMembers } = require('../sockets/state');
+const { activeUsers, socketUserMap, presentationState, emitRoomMembers } = require('../sockets/state');
 
 async function getRooms(req, res) {
   const rooms = await db.getRooms(req.user.userId, req.user.email);
@@ -353,7 +353,7 @@ async function updateSettings(req, res) {
   }
 
   const updates = {};
-  const { name, password, allowChat, allowFiles, allowDrawing, allowStickyNotes } = req.body;
+  const { name, password, allowChat, allowFiles, allowDrawing, allowStickyNotes, allowPresentation } = req.body;
 
   if (name && name.trim()) {
     updates.name = name.trim();
@@ -371,6 +371,7 @@ async function updateSettings(req, res) {
   if (allowFiles !== undefined) updates.allowFiles = Boolean(allowFiles);
   if (allowDrawing !== undefined) updates.allowDrawing = Boolean(allowDrawing);
   if (allowStickyNotes !== undefined) updates.allowStickyNotes = Boolean(allowStickyNotes);
+  if (allowPresentation !== undefined) updates.allowPresentation = Boolean(allowPresentation);
 
   await db.updateRoomSettings(room.id, updates);
 
@@ -380,9 +381,24 @@ async function updateSettings(req, res) {
     allowChat: updates.allowChat !== undefined ? updates.allowChat : room.allowChat,
     allowFiles: updates.allowFiles !== undefined ? updates.allowFiles : room.allowFiles,
     allowDrawing: updates.allowDrawing !== undefined ? updates.allowDrawing : room.allowDrawing,
-    allowStickyNotes: updates.allowStickyNotes !== undefined ? updates.allowStickyNotes : room.allowStickyNotes
+    allowStickyNotes: updates.allowStickyNotes !== undefined ? updates.allowStickyNotes : room.allowStickyNotes,
+    allowPresentation: updates.allowPresentation !== undefined ? updates.allowPresentation : room.allowPresentation
   };
   io.to(room.id).emit('room-settings-updated', mergedSettings);
+
+  // If allowPresentation was disabled, stop any non-owner presenter
+  if (updates.allowPresentation === false) {
+    const currentPres = presentationState[room.id];
+    if (currentPres && String(currentPres.presenterUserId) !== String(room.ownerId)) {
+      delete presentationState[room.id];
+      io.to(room.id).emit('presentation:state', {
+        active: false,
+        presenterUserId: null,
+        presenterName: null,
+        reason: 'presentation-disabled'
+      });
+    }
+  }
 
   emitActivity(io, room.id, 'settings', req.user.username, `${req.user.username} updated room settings`);
 

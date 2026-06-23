@@ -15,7 +15,8 @@ function mapDoc(doc) {
     allowChat: rest.allowChat !== undefined ? rest.allowChat : true,
     allowFiles: rest.allowFiles !== undefined ? rest.allowFiles : true,
     allowDrawing: rest.allowDrawing !== undefined ? rest.allowDrawing : true,
-    allowStickyNotes: rest.allowStickyNotes !== undefined ? rest.allowStickyNotes : true
+    allowStickyNotes: rest.allowStickyNotes !== undefined ? rest.allowStickyNotes : true,
+    allowPresentation: rest.allowPresentation !== undefined ? rest.allowPresentation : true
   };
 }
 
@@ -231,6 +232,7 @@ async function createRoom(id, roomName, passwordHash, ownerId, ownerEmail, owner
     allowFiles: true,
     allowDrawing: true,
     allowStickyNotes: true,
+    allowPresentation: true,
     createdAt: now,
     created_at: now,
     participants: [
@@ -723,7 +725,7 @@ async function updateRoomSettings(roomId, updateFields) {
 async function getRoomSettings(roomId) {
   const room = await db.collection('rooms').findOne(
     { _id: roomId },
-    { projection: { name: 1, roomName: 1, roomId: 1, ownerId: 1, allowChat: 1, allowFiles: 1, allowDrawing: 1, allowStickyNotes: 1 } }
+    { projection: { name: 1, roomName: 1, roomId: 1, ownerId: 1, allowChat: 1, allowFiles: 1, allowDrawing: 1, allowStickyNotes: 1, allowPresentation: 1 } }
   );
   if (!room) return null;
   return {
@@ -733,7 +735,8 @@ async function getRoomSettings(roomId) {
     allowChat: room.allowChat !== undefined ? room.allowChat : true,
     allowFiles: room.allowFiles !== undefined ? room.allowFiles : true,
     allowDrawing: room.allowDrawing !== undefined ? room.allowDrawing : true,
-    allowStickyNotes: room.allowStickyNotes !== undefined ? room.allowStickyNotes : true
+    allowStickyNotes: room.allowStickyNotes !== undefined ? room.allowStickyNotes : true,
+    allowPresentation: room.allowPresentation !== undefined ? room.allowPresentation : true
   };
 }
 

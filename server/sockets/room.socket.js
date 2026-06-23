@@ -3,7 +3,7 @@ const db = require('../db');
 const { JWT_SECRET } = require('../config/jwt');
 const cloudinary = require('../config/cloudinary');
 const { emitActivity } = require('./activity');
-const { activeUsers, socketUserMap, emitRoomMembers } = require('./state');
+const { activeUsers, socketUserMap, presentationState, emitRoomMembers } = require('./state');
 
 function registerRoomHandlers(io, socket) {
   socket.currentRoomId = null;
@@ -114,6 +114,7 @@ function registerRoomHandlers(io, socket) {
         allowFiles: room.allowFiles !== undefined ? room.allowFiles : true,
         allowDrawing: room.allowDrawing !== undefined ? room.allowDrawing : true,
         allowStickyNotes: room.allowStickyNotes !== undefined ? room.allowStickyNotes : true,
+        allowPresentation: room.allowPresentation !== undefined ? room.allowPresentation : true,
         activeUsers: Object.values(activeUsers[roomId])
       });
 
@@ -126,6 +127,39 @@ function registerRoomHandlers(io, socket) {
       });
       emitActivity(io, roomId, 'join', displayName, `${displayName} joined`);
       emitRoomMembers(io, roomId);
+
+      // Late joiner: if presentation is active, send state + latest viewport
+      if (presentationState[roomId]?.active) {
+        const ps = presentationState[roomId];
+        socket.emit('presentation:state', {
+          active: true,
+          presenterUserId: ps.presenterUserId,
+          presenterName: ps.presenterName
+        });
+        if (ps.viewport) {
+          socket.emit('presentation:viewport', {
+            presenterId: ps.presenterUserId,
+            presenterName: ps.presenterName,
+            scale: ps.viewport.scale,
+            x: ps.viewport.x,
+            y: ps.viewport.y,
+            centerBoardX: ps.viewport.centerBoardX,
+            centerBoardY: ps.viewport.centerBoardY,
+            containerWidth: ps.viewport.containerWidth,
+            containerHeight: ps.viewport.containerHeight
+          });
+        } else {
+          socket.emit('presentation:viewport', {
+            presenterId: ps.presenterUserId,
+            presenterName: ps.presenterName,
+            scale: 1,
+            x: 0,
+            y: 0,
+            centerBoardX: 0,
+            centerBoardY: 0
+          });
+        }
+      }
     } catch (err) {
       console.error('Error on join_room:', err);
       socket.emit('error_message', 'Failed to join room properly.');
@@ -141,6 +175,15 @@ function registerRoomHandlers(io, socket) {
     const cr = socket.currentRoomId;
     if (cr && activeUsers[cr] && activeUsers[cr][socket.id]) {
       const user = activeUsers[cr][socket.id];
+      // Clean up presentation if the leaver was the presenter
+      if (presentationState[cr] && String(presentationState[cr].presenterSocketId) === String(socket.id)) {
+        delete presentationState[cr];
+        io.to(cr).emit('presentation:state', {
+          active: false,
+          presenterUserId: null,
+          presenterName: null
+        });
+      }
       socket.to(cr).emit('user_left', socket.id);
       socket.to(cr).emit('cursor-removed', { userId: user.userId, socketId: socket.id });
       socket.to(cr).emit('room-activity', {
@@ -255,7 +298,171 @@ function registerRoomHandlers(io, socket) {
     }
   });
 
+  socket.on('presentation:start', async () => {
+    const cr = socket.currentRoomId;
+    if (!cr) {
+      socket.emit('presentation:error', { message: 'Not in a room.' });
+      return;
+    }
+
+    const currentUserId = String(socket.userData?.userId);
+    if (!currentUserId || currentUserId === 'undefined') {
+      socket.emit('presentation:error', { message: 'Authentication required.' });
+      return;
+    }
+
+    const room = await require('../db').getRoomById(cr);
+    if (!room) {
+      socket.emit('presentation:error', { message: 'Room not found.' });
+      return;
+    }
+
+    const isRoomOwner = String(room.ownerId) === currentUserId;
+    const allowPres = room.allowPresentation !== undefined ? room.allowPresentation : true;
+
+    if (!isRoomOwner && !allowPres) {
+      socket.emit('presentation:error', { message: 'Presentation is disabled by owner' });
+      return;
+    }
+
+    const currentPresentation = presentationState[cr];
+
+    if (currentPresentation?.active) {
+      const currentPresenterId = String(currentPresentation.presenterUserId);
+      const requesterId = currentUserId;
+      const samePresenter = currentPresenterId === requesterId;
+
+      if (!samePresenter && !isRoomOwner) {
+        socket.emit('presentation:error', { message: 'Someone is already presenting' });
+        return;
+      }
+
+      // Owner override
+      if (!samePresenter && isRoomOwner) {
+        const prevPresenter = currentPresentation;
+        io.to(prevPresenter.presenterSocketId).emit('presentation:overridden');
+      }
+    }
+
+    const userData = activeUsers[cr]?.[socket.id];
+    const presenterName = userData?.name || userData?.username || 'User';
+
+    presentationState[cr] = {
+      active: true,
+      presenterSocketId: socket.id,
+      presenterUserId: currentUserId,
+      presenterName: presenterName,
+      startedAt: Date.now(),
+      viewport: { scale: 1, x: 0, y: 0, centerBoardX: 0, centerBoardY: 0 }
+    };
+
+    io.to(cr).emit('presentation:state', {
+      active: true,
+      presenterUserId: currentUserId,
+      presenterName: presenterName,
+      isOwnerPresenter: isRoomOwner
+    });
+
+    socket.emit('presentation:started');
+  });
+
+  socket.on('presentation:stop', async () => {
+    const cr = socket.currentRoomId;
+    if (!cr || !presentationState[cr]) return;
+
+    const currentUserId = String(socket.userData?.userId);
+    const room = await require('../db').getRoomById(cr);
+    const isRoomOwner = room && String(room.ownerId) === currentUserId;
+    const isPresenter = String(presentationState[cr].presenterUserId) === currentUserId;
+
+    if (!isPresenter && !isRoomOwner) {
+      socket.emit('presentation:error', { message: 'Only presenter or owner can stop presentation' });
+      return;
+    }
+
+    delete presentationState[cr];
+
+    io.to(cr).emit('presentation:state', {
+      active: false,
+      presenterUserId: null,
+      presenterName: null
+    });
+  });
+
+  socket.on('presentation:viewport', ({ scale, x, y, centerBoardX, centerBoardY, containerWidth, containerHeight }) => {
+    const cr = socket.currentRoomId;
+    if (!cr || !presentationState[cr]) return;
+    if (String(presentationState[cr].presenterSocketId) !== String(socket.id)) return;
+    const safeViewport = {
+      scale: Number(scale) || 1,
+      x: Number(x) || 0,
+      y: Number(y) || 0,
+      centerBoardX: centerBoardX !== undefined ? Number(centerBoardX) : 0,
+      centerBoardY: centerBoardY !== undefined ? Number(centerBoardY) : 0,
+      containerWidth: containerWidth !== undefined ? Number(containerWidth) : 0,
+      containerHeight: containerHeight !== undefined ? Number(containerHeight) : 0
+    };
+    presentationState[cr].viewport = safeViewport;
+    socket.to(cr).emit('presentation:viewport', {
+      presenterId: presentationState[cr].presenterUserId,
+      presenterName: presentationState[cr].presenterName,
+      scale: safeViewport.scale,
+      x: safeViewport.x,
+      y: safeViewport.y,
+      centerBoardX: safeViewport.centerBoardX,
+      centerBoardY: safeViewport.centerBoardY,
+      containerWidth: safeViewport.containerWidth,
+      containerHeight: safeViewport.containerHeight
+    });
+  });
+
+  socket.on('presentation:get-state', ({ roomId }) => {
+    const cr = socket.currentRoomId;
+    if (!cr) return;
+    const ps = presentationState[cr];
+    socket.emit('presentation:state', {
+      active: !!ps?.active,
+      presenterUserId: ps?.presenterUserId || null,
+      presenterName: ps?.presenterName || null
+    });
+    if (ps?.active && ps?.viewport) {
+      socket.emit('presentation:viewport', {
+        presenterId: ps.presenterUserId,
+        presenterName: ps.presenterName,
+        scale: ps.viewport.scale,
+        x: ps.viewport.x,
+        y: ps.viewport.y,
+        centerBoardX: ps.viewport.centerBoardX,
+        centerBoardY: ps.viewport.centerBoardY,
+        containerWidth: ps.viewport.containerWidth,
+        containerHeight: ps.viewport.containerHeight
+      });
+    } else if (ps?.active) {
+      socket.emit('presentation:viewport', {
+        presenterId: ps.presenterUserId,
+        presenterName: ps.presenterName,
+        scale: 1,
+        x: 0,
+        y: 0,
+        centerBoardX: 0,
+        centerBoardY: 0
+      });
+    }
+  });
+
   socket.on('disconnect', () => {
+    // Clean up presentation if the disconnected user was the presenter
+    for (const cr of Object.keys(presentationState)) {
+      if (String(presentationState[cr].presenterSocketId) === String(socket.id)) {
+        delete presentationState[cr];
+        io.to(cr).emit('presentation:state', {
+          active: false,
+          presenterUserId: null,
+          presenterName: null
+        });
+      }
+    }
+
     delete socketUserMap[socket.id];
 
     const cr = socket.currentRoomId;

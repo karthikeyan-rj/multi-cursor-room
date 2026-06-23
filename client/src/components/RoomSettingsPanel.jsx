@@ -89,6 +89,7 @@ export default function RoomSettingsPanel({ roomDisplayId, roomName: initialName
         body.allowFiles = settings.allowFiles;
         body.allowDrawing = settings.allowDrawing;
         body.allowStickyNotes = settings.allowStickyNotes;
+        body.allowPresentation = settings.allowPresentation;
       }
       if (Object.keys(body).length === 0) {
         showToast('No changes to save.', 'info');
@@ -264,6 +265,17 @@ export default function RoomSettingsPanel({ roomDisplayId, roomName: initialName
                     <span className="permission-copy">
                       <strong>Allow Sticky Notes</strong>
                       <small>Members can create sticky notes</small>
+                    </span>
+                  </label>
+                  <label className="permission-row">
+                    <input
+                      type="checkbox"
+                      checked={settings.allowPresentation}
+                      onChange={() => handleToggle('allowPresentation')}
+                    />
+                    <span className="permission-copy">
+                      <strong>Allow Presentation</strong>
+                      <small>Members can present their screen to others</small>
                     </span>
                   </label>
                 </div>

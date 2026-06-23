@@ -1,5 +1,6 @@
 const activeUsers = {};
 const socketUserMap = {};
+const presentationState = {}; // roomId -> { active, presenterSocketId, presenterUserId, presenterName, startedAt, viewport: { scale, x, y, centerBoardX, centerBoardY, containerWidth, containerHeight } }
 
 function getRoomMembers(roomId) {
   return Object.values(activeUsers[roomId] || {});
@@ -16,4 +17,4 @@ function emitRoomMembers(io, roomId) {
   io.to(roomId).emit('room-members-updated', { members, onlineCount });
 }
 
-module.exports = { activeUsers, socketUserMap, getRoomMembers, getOnlineCount, emitRoomMembers };
+module.exports = { activeUsers, socketUserMap, presentationState, getRoomMembers, getOnlineCount, emitRoomMembers };

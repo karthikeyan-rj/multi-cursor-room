@@ -1,6 +1,6 @@
 const db = require('../db');
 const { emitActivity } = require('./activity');
-const { activeUsers } = require('./state');
+const { activeUsers, presentationState } = require('./state');
 
 function registerCanvasHandlers(io, socket) {
   async function checkDrawingPermission(cr, socket) {
@@ -207,6 +207,18 @@ function registerCanvasHandlers(io, socket) {
     const cr = socket.currentRoomId;
     if (!cr) return;
     if (color !== null && !/^#[0-9A-Fa-f]{6}$/.test(color)) return;
+
+    const room = await db.getRoomById(cr);
+    if (!room) return;
+    const isOwner = String(room.ownerId) === String(socket.userData?.userId);
+    const drawingAllowed = room.allowDrawing !== undefined ? room.allowDrawing : true;
+
+    if (!isOwner && !drawingAllowed) return;
+
+    const ps = presentationState[cr];
+    const isPresenter = ps?.active && String(ps.presenterUserId) === String(socket.userData?.userId);
+    if (!isOwner && ps?.active && !isPresenter) return;
+
     const user = activeUsers[cr]?.[socket.id];
     io.to(cr).emit('board_color_changed', { color });
     try {

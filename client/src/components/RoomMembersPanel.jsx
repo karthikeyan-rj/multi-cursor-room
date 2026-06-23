@@ -21,7 +21,7 @@ function isSameUser(a, b) {
   return false;
 }
 
-export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, username, cursorColor, onClose, activeUserCount }) {
+export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, username, cursorColor, onClose, activeUserCount, isLightBoard }) {
   const [members, setMembers] = useState([]);
   const [ownerId, setOwnerId] = useState(null);
   const [ownerName, setOwnerName] = useState('');
@@ -169,8 +169,10 @@ export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, use
 
   const currentUserObj = { userId, email: userEmail };
 
+  const glassClass = isLightBoard ? 'glass-on-light' : 'glass-on-dark';
+
   return (
-    <div className="members-panel room-glass-panel room-side-drawer" onClick={e => e.stopPropagation()}>
+    <div className={`members-panel room-glass-panel room-side-drawer ${glassClass}`} onClick={e => e.stopPropagation()}>
       <div className="members-panel-header">
         <h3 className="members-panel-title">Members <span className="members-online-count">{onlineCount} online</span></h3>
         <button className="members-panel-close" onClick={onClose} aria-label="Close">

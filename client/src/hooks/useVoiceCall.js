@@ -166,12 +166,6 @@ export default function useVoiceCall() {
     }
   }, [isMuted]);
 
-  useEffect(() => {
-    return () => {
-      leaveVoiceCall();
-    };
-  }, [leaveVoiceCall]);
-
   return {
     isConnected,
     isMuted,

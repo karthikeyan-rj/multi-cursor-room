@@ -76,6 +76,20 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   const [roomAllowFiles, setRoomAllowFiles] = useState(true);
   const [roomAllowDrawing, setRoomAllowDrawing] = useState(true);
   const [roomAllowStickyNotes, setRoomAllowStickyNotes] = useState(true);
+  const [roomAllowPresentation, setRoomAllowPresentation] = useState(true);
+  const [isPresenting, setIsPresenting] = useState(false);
+  const [isFollowingPresentation, setIsFollowingPresentation] = useState(false);
+  const [presenterUserId, setPresenterUserId] = useState(null);
+  const [presenterName, setPresenterName] = useState('');
+  const [presentationLockedToast, setPresentationLockedToast] = useState(null);
+  const lastLockedToastRef = useRef(0);
+  const showPresentationLockedToast = useCallback(() => {
+    const now = Date.now();
+    if (now - lastLockedToastRef.current < 1500) return;
+    lastLockedToastRef.current = now;
+    setPresentationLockedToast(presenterNameRef.current || 'Someone');
+    setTimeout(() => setPresentationLockedToast(null), 2000);
+  }, []);
   const [panStart, setPanStart] = useState(null);
   const canvasRef = useRef(null);
   const chatOpenRef = useRef(chatOpen);
@@ -85,6 +99,21 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   const undoStackRef = useRef([]);
   const viewportRef = useRef(viewport);
   useEffect(() => { viewportRef.current = viewport; }, [viewport]);
+  const presenterNameRef = useRef(presenterName);
+  useEffect(() => { presenterNameRef.current = presenterName; }, [presenterName]);
+  const followingRef = useRef(isFollowingPresentation);
+  useEffect(() => { followingRef.current = isFollowingPresentation; }, [isFollowingPresentation]);
+  const roomOwnerIdRef = useRef(roomOwnerId);
+  useEffect(() => { roomOwnerIdRef.current = roomOwnerId; }, [roomOwnerId]);
+  const roomAllowDrawingRef = useRef(roomAllowDrawing);
+  useEffect(() => { roomAllowDrawingRef.current = roomAllowDrawing; }, [roomAllowDrawing]);
+  const applyingPresentationRef = useRef(false);
+  const presentationStateRef = useRef({ presenterUserId: null, isPresenting: false, isFollowingPresentation: false, currentUserId: userId });
+  useEffect(() => {
+    presentationStateRef.current = { presenterUserId, isPresenting, isFollowingPresentation, currentUserId: userId };
+  }, [presenterUserId, isPresenting, isFollowingPresentation, userId]);
+  const isPresentingRef = useRef(isPresenting);
+  useEffect(() => { isPresentingRef.current = isPresenting; }, [isPresenting]);
   function screenToBoard(screenX, screenY) {
     const vp = viewportRef.current;
     return {
@@ -126,7 +155,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
 
     const hasLoadedInitialMessagesRef = { current: false };
 
-    socket.on('room_data', ({ drawings, stickyNotes, chatHistory, fileMessages, roomCreatedBy, roomOwnerId, boardColor, roomName, allowChat, allowFiles, allowDrawing, allowStickyNotes, activeUsers }) => {
+    socket.on('room_data', ({ drawings, stickyNotes, chatHistory, fileMessages, roomCreatedBy, roomOwnerId, boardColor, roomName, allowChat, allowFiles, allowDrawing, allowStickyNotes, allowPresentation, activeUsers }) => {
       unlockMessageSound();
       setDrawings(drawings.map(d => ({ ...d, id: d.stroke_id || d.id })));
       setStickyNotes(stickyNotes);
@@ -143,11 +172,14 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       setRoomAllowFiles(allowFiles !== undefined ? allowFiles : true);
       setRoomAllowDrawing(allowDrawing !== undefined ? allowDrawing : true);
       setRoomAllowStickyNotes(allowStickyNotes !== undefined ? allowStickyNotes : true);
+      setRoomAllowPresentation(allowPresentation !== undefined ? allowPresentation : true);
       const userMap = {};
       activeUsers.forEach(u => { if (u.id !== socket.id) userMap[u.id] = u; });
       setRemoteCursors(userMap);
       const uniqueCount = new Set(activeUsers.map(u => String(u.userId || u.id))).size;
       setActiveUserCount(uniqueCount);
+      // Request current presentation state in case server-side late-join emit was missed
+      socket.emit('presentation:get-state', { roomId: currentRoomId });
     });
 
     socket.on('user_joined', (user) => {
@@ -155,11 +187,12 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       setRemoteCursors(prev => ({ ...prev, [user.id]: user }));
     });
 
-    socket.on('room-settings-updated', ({ allowChat, allowFiles, allowDrawing, allowStickyNotes }) => {
+    socket.on('room-settings-updated', ({ allowChat, allowFiles, allowDrawing, allowStickyNotes, allowPresentation }) => {
       if (allowChat !== undefined) setRoomAllowChat(allowChat);
       if (allowFiles !== undefined) setRoomAllowFiles(allowFiles);
       if (allowDrawing !== undefined) setRoomAllowDrawing(allowDrawing);
       if (allowStickyNotes !== undefined) setRoomAllowStickyNotes(allowStickyNotes);
+      if (allowPresentation !== undefined) setRoomAllowPresentation(allowPresentation);
     });
 
     socket.on('room-members-updated', (payload) => {
@@ -355,6 +388,76 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       navigate('/dashboard');
     });
 
+    socket.on('presentation:state', ({ active, presenterUserId: presUserId, presenterName: presName, reason }) => {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('PRESENT_STATE', { active, presUserId, presName, userId });
+      }
+      if (active) {
+        const isMe = String(presUserId) === String(userId);
+        setIsPresenting(isMe);
+        setIsFollowingPresentation(!isMe);
+        setPresenterUserId(presUserId);
+        setPresenterName(presName || 'Presenter');
+        if (isMe && viewportRef.current) {
+          const vp = viewportRef.current;
+          const iw = window.innerWidth;
+          const ih = window.innerHeight;
+          const payload = { scale: vp.scale, x: vp.x, y: vp.y, centerBoardX: (iw / 2 - vp.x) / vp.scale, centerBoardY: (ih / 2 - vp.y) / vp.scale, containerWidth: iw, containerHeight: ih };
+          socket.emit('presentation:viewport', payload);
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('PRESENT_INITIAL_VIEWPORT', payload);
+          }
+        }
+      } else {
+        setIsPresenting(false);
+        setIsFollowingPresentation(false);
+        setPresenterUserId(null);
+        setPresenterName('');
+      }
+    });
+
+    socket.on('presentation:ended', () => {
+      setIsPresenting(false);
+      setIsFollowingPresentation(false);
+      setPresenterUserId(null);
+      setPresenterName('');
+    });
+
+    socket.on('presentation:overridden', () => {
+      setIsPresenting(false);
+      showToast('Another user has taken over the presentation.', 'info');
+    });
+
+    socket.on('presentation:error', ({ message }) => {
+      showToast(message || 'Presentation error', 'info');
+    });
+
+    socket.on('presentation:viewport', ({ presenterId, scale, x, y, centerBoardX, centerBoardY, containerWidth, containerHeight }) => {
+      const ps = presentationStateRef.current;
+      if (String(presenterId || '') === String(ps.currentUserId)) return;
+      if (String(presenterId || '') !== String(ps.presenterUserId)) return;
+      if (!ps.isPresenting && !ps.isFollowingPresentation) {
+        setIsFollowingPresentation(true);
+      }
+      applyingPresentationRef.current = true;
+      let newX, newY;
+      const s = scale || 1;
+      if (centerBoardX !== undefined && centerBoardY !== undefined) {
+        newX = window.innerWidth / 2 - centerBoardX * s;
+        newY = window.innerHeight / 2 - centerBoardY * s;
+      } else {
+        newX = x || 0;
+        newY = y || 0;
+      }
+      setViewport({ x: newX, y: newY, scale: s });
+      requestAnimationFrame(() => {
+        applyingPresentationRef.current = false;
+      });
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('PRESENT_APPLY_VIEWPORT', { scale: s, x: newX, y: newY, centerBoardX, centerBoardY });
+      }
+    });
+
     socket.on('join-request-approved', ({ roomId, roomInternalId, message }) => {
       showToast(message || 'Owner accepted your request.', 'success');
       // Navigate to the room using the internal ID
@@ -424,6 +527,10 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       socket.off('cursor-removed');
       socket.off('user_kicked');
       socket.off('kicked-from-room');
+      socket.off('presentation:state');
+      socket.off('presentation:ended');
+      socket.off('presentation:overridden');
+      socket.off('presentation:viewport');
     };
   }, [currentRoomId]);
 
@@ -478,6 +585,10 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   }, [drawings, viewport]);
 
   const handleCanvasMouseDown = (e) => {
+    if (isFollowingPresentation) {
+      showPresentationLockedToast();
+      return;
+    }
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -509,7 +620,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
     if (isPanning && panStart) {
       const dx = e.clientX - rect.left - panStart.x;
       const dy = e.clientY - rect.top - panStart.y;
-      setViewport(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+      setViewport(prev => { const n = { ...prev, x: prev.x + dx, y: prev.y + dy }; viewportRef.current = n; return n; });
       setPanStart({ x: e.clientX - rect.left, y: e.clientY - rect.top });
       return;
     }
@@ -546,7 +657,12 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   };
 
   const handleCanvasMouseUp = () => {
-    if (isPanning) { setIsPanning(false); setPanStart(null); return; }
+    if (isPanning) {
+      setIsPanning(false);
+      setPanStart(null);
+      requestAnimationFrame(() => emitPresenterViewport());
+      return;
+    }
     if (!isDrawing) return;
     setIsDrawing(false);
 
@@ -715,20 +831,93 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   }, [brushColor, brushWidth]);
 
   const handleSetBoardColor = useCallback((color) => {
+    const isOwner = String(roomOwnerIdRef.current) === String(userId);
+    const drawingAllowed = roomAllowDrawingRef.current !== false;
+    const isFollowing = followingRef.current;
+    const canChange = isOwner || (drawingAllowed && !isFollowing);
+    if (!canChange) return;
     socket.emit('board_color_change', { color });
     setBoardColor(color);
-  }, []);
+  }, [userId]);
 
   const handleZoomIn = useCallback(() => {
-    setViewport(prev => ({ ...prev, scale: Math.min(prev.scale * 1.2, 5) }));
-  }, []);
+    if (isFollowingPresentation) {
+      showPresentationLockedToast();
+      return;
+    }
+    setViewport(prev => { const n = { ...prev, scale: Math.min(prev.scale * 1.2, 5) }; viewportRef.current = n; return n; });
+    requestAnimationFrame(() => emitPresenterViewport());
+  }, [isFollowingPresentation, showPresentationLockedToast]);
 
   const handleZoomOut = useCallback(() => {
-    setViewport(prev => ({ ...prev, scale: Math.max(prev.scale / 1.2, 0.1) }));
-  }, []);
+    if (isFollowingPresentation) {
+      showPresentationLockedToast();
+      return;
+    }
+    setViewport(prev => { const n = { ...prev, scale: Math.max(prev.scale / 1.2, 0.1) }; viewportRef.current = n; return n; });
+    requestAnimationFrame(() => emitPresenterViewport());
+  }, [isFollowingPresentation, showPresentationLockedToast]);
 
   const handleZoomReset = useCallback(() => {
-    setViewport({ x: 0, y: 0, scale: 1 });
+    if (isFollowingPresentation) {
+      showPresentationLockedToast();
+      return;
+    }
+    const n = { x: 0, y: 0, scale: 1 };
+    viewportRef.current = n;
+    setViewport(n);
+    requestAnimationFrame(() => emitPresenterViewport());
+  }, [isFollowingPresentation, showPresentationLockedToast]);
+
+  const lastViewportEmitRef = useRef(0);
+
+  const emitPresenterViewport = useCallback(() => {
+    const ps = presentationStateRef.current;
+    if (!ps.isPresenting) return;
+    const vp = viewportRef.current;
+    if (!vp) return;
+    const now = Date.now();
+    if (now - lastViewportEmitRef.current < 40) return;
+    lastViewportEmitRef.current = now;
+    const iw = window.innerWidth;
+    const ih = window.innerHeight;
+    const payload = {
+      scale: vp.scale,
+      x: vp.x,
+      y: vp.y,
+      centerBoardX: (iw / 2 - vp.x) / vp.scale,
+      centerBoardY: (ih / 2 - vp.y) / vp.scale,
+      containerWidth: iw,
+      containerHeight: ih
+    };
+    socket.emit('presentation:viewport', payload);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('PRESENT_EMIT_VIEWPORT', payload);
+    }
+  }, []);
+
+  // Fallback: trailing debounce to capture any viewport change not covered by direct handler emits
+  useEffect(() => {
+    if (!isPresentingRef.current) return;
+    if (applyingPresentationRef.current) return;
+    const timer = setTimeout(emitPresenterViewport, 120);
+    return () => clearTimeout(timer);
+  }, [viewport, isPresenting]);
+
+  const requestPresentationState = useCallback(() => {
+    if (currentRoomId) {
+      socket.emit('presentation:get-state', { roomId: currentRoomId });
+    }
+  }, [currentRoomId]);
+
+  const startPresenting = useCallback(() => {
+    socket.emit('presentation:start');
+  }, []);
+
+  const stopPresenting = useCallback(() => {
+    socket.emit('presentation:stop');
+    setIsPresenting(false);
+    setIsFollowingPresentation(false);
   }, []);
 
   useEffect(() => {
@@ -736,6 +925,11 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
     const canvas = canvasRef.current;
     if (!canvas) return;
     const onWheel = (e) => {
+      if (followingRef.current) {
+        showPresentationLockedToast();
+        e.preventDefault();
+        return;
+      }
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left;
@@ -744,12 +938,11 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
         const delta = e.deltaY > 0 ? 1 / 1.1 : 1.1;
         const newScale = Math.min(Math.max(prev.scale * delta, 0.1), 5);
         const scaleRatio = newScale / prev.scale;
-        return {
-          scale: newScale,
-          x: mx - (mx - prev.x) * scaleRatio,
-          y: my - (my - prev.y) * scaleRatio
-        };
+        const n = { scale: newScale, x: mx - (mx - prev.x) * scaleRatio, y: my - (my - prev.y) * scaleRatio };
+        viewportRef.current = n;
+        return n;
       });
+      requestAnimationFrame(() => emitPresenterViewport());
     };
     canvas.addEventListener('wheel', onWheel, { passive: false });
     return () => canvas.removeEventListener('wheel', onWheel);
@@ -770,6 +963,8 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
     handleNoteMouseDown, updateStickyText, deleteSticky,
     sendReaction, handleSendChat, handlePlaceText,
     replyingTo, setReplyingTo, handleCancelReply,
-    roomAllowChat, roomAllowFiles, roomAllowDrawing, roomAllowStickyNotes
+    roomAllowChat, roomAllowFiles, roomAllowDrawing, roomAllowStickyNotes, roomAllowPresentation,
+    isPresenting, isFollowingPresentation, presenterUserId, presenterName,
+    startPresenting, stopPresenting, presentationLockedToast
   };
 }

@@ -1,6 +1,4 @@
-import useVoiceCall from '../hooks/useVoiceCall';
-
-export default function VoiceCallPanel({ roomId, onClose }) {
+export default function VoiceCallPanel({ roomId, onClose, voiceCall, isLightBoard }) {
   const {
     isConnected,
     isMuted,
@@ -10,10 +8,12 @@ export default function VoiceCallPanel({ roomId, onClose }) {
     joinVoiceCall,
     leaveVoiceCall,
     toggleMute
-  } = useVoiceCall();
+  } = voiceCall;
+
+  const glassClass = isLightBoard ? 'glass-on-light' : 'glass-on-dark';
 
   return (
-    <div className="voice-call-panel">
+    <div className={`voice-call-panel ${glassClass}`}>
       <div className="voice-call-header">
         <span className="voice-call-title">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -68,7 +68,7 @@ export default function VoiceCallPanel({ roomId, onClose }) {
 
               <button
                 className="voice-call-btn leave"
-                onClick={leaveVoiceCall}
+                onClick={() => { leaveVoiceCall(); onClose(); }}
                 title="Leave Call"
               >
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -79,22 +79,25 @@ export default function VoiceCallPanel({ roomId, onClose }) {
               </button>
             </div>
           </>
+        ) : isJoining ? (
+          <div className="voice-call-join">
+            <div className="voice-call-connecting">
+              <span className="voice-call-spinner" />
+              Connecting...
+            </div>
+          </div>
         ) : (
           <div className="voice-call-join">
+            <div className="voice-call-not-connected">Not connected</div>
             {error && <div className="voice-call-error">{error}</div>}
             <button
-              className={`voice-call-btn join ${isJoining ? 'joining' : ''}`}
+              className="voice-call-btn join"
               onClick={() => joinVoiceCall(roomId)}
-              disabled={isJoining}
             >
-              {isJoining ? (
-                <span className="voice-call-spinner" />
-              ) : (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" />
-                </svg>
-              )}
-              <span>{isJoining ? 'Joining...' : 'Join Voice Call'}</span>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" />
+              </svg>
+              <span>Join Call</span>
             </button>
           </div>
         )}

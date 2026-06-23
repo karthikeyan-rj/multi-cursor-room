@@ -12,17 +12,22 @@ const BOARD_COLORS = [
   { value: '#e9d5ff', label: 'Lavender' },
 ];
 
-export default function BoardColorPicker({ boardColor, onColorChange }) {
+export default function BoardColorPicker({ boardColor, onColorChange, disabled }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useClickOutside(ref, useCallback(() => setOpen(false), []));
 
+  const handleClick = () => {
+    if (disabled) return;
+    setOpen(v => !v);
+  };
+
   return (
     <div className="board-color-picker-group" ref={ref}>
       <button
-        className="board-color-picker-btn"
-        onClick={() => setOpen(v => !v)}
-        title="Board background color"
+        className={`board-color-picker-btn${disabled ? ' is-disabled' : ''}`}
+        onClick={handleClick}
+        title={disabled ? 'Board color change is disabled' : 'Board background color'}
       >
         <div
           className="board-color-picker-dot"
@@ -40,7 +45,7 @@ export default function BoardColorPicker({ boardColor, onColorChange }) {
               className={`board-color-btn${boardColor === value ? ' active' : ''}`}
               data-color={value || 'default'}
               style={{ background: value || 'transparent' }}
-              onClick={() => { onColorChange(value); setOpen(false); }}
+              onClick={() => { if (!disabled) { onColorChange(value); setOpen(false); } }}
               title={label}
             />
           ))}
