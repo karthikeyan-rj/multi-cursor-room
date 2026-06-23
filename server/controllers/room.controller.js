@@ -36,16 +36,22 @@ async function getRoom(req, res) {
     return res.status(404).json({ success: false, error: 'Room not found.' });
   }
 
-  const isMember = room.ownerId === req.user.userId ||
-    (room.participants && room.participants.some(p => p.userId === req.user.userId));
+  const currentUserId = String(req.user.userId);
+  const ownerId = String(room.ownerId);
+  const isOwner = ownerId === currentUserId;
 
-  if (!isMember) {
-    return res.status(403).json({ success: false, error: 'Access denied. You do not have access to this room.' });
-  }
+  if (isOwner) {
+    // Owner always has access
+  } else {
+    const isParticipant = room.participants && room.participants.some(p => String(p.userId) === currentUserId);
+    if (!isParticipant) {
+      return res.status(403).json({ success: false, error: 'Access denied. You do not have access to this room.' });
+    }
 
-  const kicked = await db.isUserKicked(room.id, req.user.userId);
-  if (kicked) {
-    return res.status(403).json({ success: false, error: 'Access denied. You were removed from this room by the owner.' });
+    const kicked = await db.isUserKicked(room.id, req.user.userId);
+    if (kicked) {
+      return res.status(403).json({ success: false, error: 'Access denied. You were removed from this room by the owner.' });
+    }
   }
 
   const safeRoom = {
@@ -154,10 +160,10 @@ async function kickUser(req, res) {
   if (!room) {
     return res.status(404).json({ success: false, error: 'Room not found.' });
   }
-  if (room.ownerId !== req.user.userId) {
+  if (String(room.ownerId) !== String(req.user.userId)) {
     return res.status(403).json({ success: false, error: 'Only the room owner can kick users.' });
   }
-  if (targetUserId === req.user.userId) {
+  if (String(targetUserId) === String(req.user.userId)) {
     return res.status(400).json({ success: false, error: 'You cannot kick yourself.' });
   }
   await db.kickUserFromRoom(room.id, targetUserId);
@@ -196,7 +202,7 @@ async function approveJoinRequest(req, res) {
   if (!room) {
     return res.status(404).json({ success: false, error: 'Room not found.' });
   }
-  if (room.ownerId !== req.user.userId) {
+  if (String(room.ownerId) !== String(req.user.userId)) {
     return res.status(403).json({ success: false, error: 'Only the room owner can approve requests.' });
   }
   await db.approveJoinRequest(room.id, req.user.userId, requesterUserId);
@@ -223,7 +229,7 @@ async function rejectJoinRequest(req, res) {
   if (!room) {
     return res.status(404).json({ success: false, error: 'Room not found.' });
   }
-  if (room.ownerId !== req.user.userId) {
+  if (String(room.ownerId) !== String(req.user.userId)) {
     return res.status(403).json({ success: false, error: 'Only the room owner can reject requests.' });
   }
   await db.rejectJoinRequest(room.id, req.user.userId, requesterUserId);
@@ -249,8 +255,11 @@ async function getMembers(req, res) {
   if (!room) {
     return res.status(404).json({ success: false, error: 'Room not found.' });
   }
-  const isMember = room.ownerId === req.user.userId ||
-    (room.participants && room.participants.some(p => p.userId === req.user.userId));
+  const currentUserId = String(req.user.userId);
+  const ownerId = String(room.ownerId);
+  const isOwner = ownerId === currentUserId;
+  const isMember = isOwner ||
+    (room.participants && room.participants.some(p => String(p.userId) === currentUserId));
   if (!isMember) {
     return res.status(403).json({ success: false, error: 'Access denied.' });
   }
@@ -261,7 +270,7 @@ async function getMembers(req, res) {
     ownerId: members.ownerId,
     ownerName: members.ownerName,
     participants: members.participants || [],
-    joinRequests: req.user.userId === room.ownerId ? joinRequests : []
+    joinRequests: isOwner ? joinRequests : []
   });
 }
 
@@ -273,7 +282,7 @@ async function deleteRoom(req, res) {
     return res.status(404).json({ success: false, error: 'Room not found.' });
   }
 
-  if (room.ownerId !== req.user.userId) {
+  if (String(room.ownerId) !== String(req.user.userId)) {
     return res.status(403).json({ success: false, error: 'Only the room owner can delete this room.' });
   }
 
@@ -311,8 +320,9 @@ async function getActivities(req, res) {
   const room = await db.getRoomByRoomId(roomId.trim());
   if (!room) return res.status(404).json({ success: false, error: 'Room not found.' });
 
-  const isMember = room.ownerId === req.user.userId ||
-    (room.participants && room.participants.some(p => p.userId === req.user.userId));
+  const currentUserId = String(req.user.userId);
+  const isMember = String(room.ownerId) === currentUserId ||
+    (room.participants && room.participants.some(p => String(p.userId) === currentUserId));
   if (!isMember) return res.status(403).json({ success: false, error: 'Access denied.' });
 
   const activities = await db.getActivities(room.id);
@@ -324,7 +334,7 @@ async function updateSettings(req, res) {
   const room = await db.getRoomByRoomId(roomId.trim());
   if (!room) return res.status(404).json({ success: false, error: 'Room not found.' });
 
-  if (room.ownerId !== req.user.userId) {
+  if (String(room.ownerId) !== String(req.user.userId)) {
     return res.status(403).json({ success: false, error: 'Only the room owner can change settings.' });
   }
 
@@ -363,14 +373,17 @@ async function getSettings(req, res) {
   const room = await db.getRoomByRoomId(roomId.trim());
   if (!room) return res.status(404).json({ success: false, error: 'Room not found.' });
 
-  const isMember = room.ownerId === req.user.userId ||
-    (room.participants && room.participants.some(p => p.userId === req.user.userId));
+  const currentUserId = String(req.user.userId);
+  const ownerId = String(room.ownerId);
+  const isOwner = ownerId === currentUserId;
+  const isMember = isOwner ||
+    (room.participants && room.participants.some(p => String(p.userId) === currentUserId));
   if (!isMember) return res.status(403).json({ success: false, error: 'Access denied.' });
 
   const settings = await db.getRoomSettings(room.id);
   if (!settings) return res.status(404).json({ success: false, error: 'Settings not found.' });
 
-  res.json({ success: true, settings: { ...settings, isOwner: room.ownerId === req.user.userId } });
+  res.json({ success: true, settings: { ...settings, isOwner } });
 }
 
 module.exports = {

@@ -16,6 +16,14 @@ export const socket = io(SERVER_URL, {
   withCredentials: true
 });
 
+export function reconnectSocket() {
+  if (socket.connected) {
+    socket.disconnect().connect();
+  } else {
+    socket.connect();
+  }
+}
+
 export function useRoomSession({ userId, username, cursorColor, activeTool, brushColor, brushWidth, chatOpen, setActiveTool }) {
   const navigate = useNavigate();
   const [currentRoomId, setCurrentRoomId] = useState(null);

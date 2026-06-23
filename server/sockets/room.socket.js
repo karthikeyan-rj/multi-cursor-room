@@ -38,21 +38,24 @@ function registerRoomHandlers(io, socket) {
         return;
       }
 
-      if (room.passwordHash) {
-        const isMember =
-          room.ownerId === userId ||
-          (room.participants && room.participants.some(p => p.userId === userId));
+      const currentUserId = String(userId);
+      const isOwner = String(room.ownerId) === currentUserId;
 
-        if (!isMember) {
+      if (room.passwordHash && !isOwner) {
+        const isParticipant = room.participants && room.participants.some(p => String(p.userId) === currentUserId);
+
+        if (!isParticipant) {
           socket.emit('error_message', 'Access denied: You are not authorized to join this room.');
           return;
         }
       }
 
-      const kicked = await db.isUserKicked(roomId, userId);
-      if (kicked) {
-        socket.emit('error_message', 'Access denied: You were removed from this room by the owner.');
-        return;
+      if (!isOwner) {
+        const kicked = await db.isUserKicked(roomId, userId);
+        if (kicked) {
+          socket.emit('error_message', 'Access denied: You were removed from this room by the owner.');
+          return;
+        }
       }
 
       socket.currentRoomId = roomId;
@@ -156,7 +159,7 @@ function registerRoomHandlers(io, socket) {
         socket.emit('error_message', 'Authentication required.');
         return;
       }
-      if (room.ownerId !== userId) {
+      if (String(room.ownerId) !== String(userId)) {
         socket.emit('error_message', 'Only the room owner can delete the room.');
         return;
       }
@@ -190,11 +193,11 @@ function registerRoomHandlers(io, socket) {
         socket.emit('error_message', 'Room not found.');
         return;
       }
-      if (room.ownerId !== socket.userData?.userId) {
+      if (String(room.ownerId) !== String(socket.userData?.userId)) {
         socket.emit('error_message', 'Only the room owner can kick users.');
         return;
       }
-      if (targetUserId === socket.userData?.userId) {
+      if (String(targetUserId) === String(socket.userData?.userId)) {
         socket.emit('error_message', 'You cannot kick yourself.');
         return;
       }

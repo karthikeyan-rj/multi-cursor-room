@@ -214,6 +214,7 @@ async function getRoomByRoomId(roomId) {
 async function createRoom(id, roomName, passwordHash, ownerId, ownerEmail, ownerName) {
   const now = new Date();
   const roomId = await generateUniqueRoomId();
+  const ownerIdStr = String(ownerId);
   await db.collection('used_room_ids').insertOne({ roomId, created_at: now });
   const roomDoc = {
     _id: id,
@@ -222,7 +223,7 @@ async function createRoom(id, roomName, passwordHash, ownerId, ownerEmail, owner
     name: roomName,
     roomName,
     passwordHash,
-    ownerId,
+    ownerId: ownerIdStr,
     ownerEmail,
     ownerName,
     boardColor: '#000000',
@@ -233,11 +234,11 @@ async function createRoom(id, roomName, passwordHash, ownerId, ownerEmail, owner
     createdAt: now,
     created_at: now,
     participants: [
-      { userId: ownerId, email: ownerEmail, username: ownerName, joinedAt: now }
+      { userId: ownerIdStr, email: ownerEmail, username: ownerName, joinedAt: now }
     ]
   };
   await db.collection('rooms').insertOne(roomDoc);
-  return { ...mapDoc(roomDoc), ownerId, participants: roomDoc.participants };
+  return { ...mapDoc(roomDoc), ownerId: ownerIdStr, participants: roomDoc.participants };
 }
 
 async function setBoardColor(roomId, color) {

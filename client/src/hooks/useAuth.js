@@ -1,13 +1,34 @@
 import { useState, useEffect } from 'react';
 import { COLORS } from '../constants';
 import { SERVER_URL } from '../config';
+import { reconnectSocket } from './useRoomSession';
+
+const normalizeUser = (rawUser) => {
+  if (!rawUser) return null;
+  const id = rawUser.id || rawUser._id || rawUser.userId;
+  return {
+    ...rawUser,
+    id,
+    _id: rawUser._id || id,
+    userId: rawUser.userId || id,
+    username: rawUser.username || rawUser.name || (rawUser.email ? rawUser.email.split('@')[0] : '')
+  };
+};
 
 export function useAuth() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    const saved = localStorage.getItem('cursor_room_user');
+    if (saved) {
+      try { return normalizeUser(JSON.parse(saved)); } catch (_) { /* ignore */ }
+    }
+    return null;
+  });
   const [authError, setAuthError] = useState('');
   const [authLoading, setAuthLoading] = useState(true);
   const [authBusy, setAuthBusy] = useState(false);
-  const [userId, setUserId] = useState('');
+  const [userId, setUserId] = useState(() => {
+    return localStorage.getItem('cursor_room_userId') || '';
+  });
   const [username, setUsername] = useState('');
   const [cursorColor, setCursorColor] = useState(() => {
     const saved = localStorage.getItem('cursor_room_color');
@@ -16,26 +37,59 @@ export function useAuth() {
   const [brushColor, setBrushColor] = useState(cursorColor);
   const [brushWidth, setBrushWidth] = useState(4);
 
+  const applyUser = (rawUser, token) => {
+    const normalized = normalizeUser(rawUser);
+    if (!normalized) return;
+    if (token) {
+      localStorage.setItem('cursor_room_token', token);
+      reconnectSocket();
+    }
+    localStorage.setItem('cursor_room_user', JSON.stringify(normalized));
+    localStorage.setItem('cursor_room_userId', normalized.id);
+    setCurrentUser(normalized);
+    setUserId(normalized.id);
+    setUsername(normalized.username);
+    if (normalized.color) {
+      setCursorColor(normalized.color);
+      setBrushColor(normalized.color);
+    }
+  };
+
   useEffect(() => {
     const checkAuth = async () => {
       const token = localStorage.getItem('cursor_room_token');
       if (!token) { setAuthLoading(false); return; }
+      const savedUser = localStorage.getItem('cursor_room_user');
+      if (savedUser) {
+        try {
+          const parsed = normalizeUser(JSON.parse(savedUser));
+          if (parsed && parsed.id) {
+            setCurrentUser(parsed);
+            setUserId(parsed.id);
+            setUsername(parsed.username);
+            if (parsed.color) {
+              setCursorColor(parsed.color);
+              setBrushColor(parsed.color);
+            }
+          }
+        } catch (_) { /* ignore */ }
+      }
       try {
         const response = await fetch(`${SERVER_URL}/api/auth/me`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await response.json();
-      if (data.success) {
-        if (data.token) {
-          localStorage.setItem('cursor_room_token', data.token);
-        }
-        setCurrentUser(data.user);
-        setUserId(data.user.userId);
-        setUsername(data.user.username);
-        setCursorColor(data.user.color);
-        setBrushColor(data.user.color);
-      } else {
+        if (data.success) {
+          if (data.token) {
+            localStorage.setItem('cursor_room_token', data.token);
+          }
+          applyUser(data.user, null);
+        } else {
           localStorage.removeItem('cursor_room_token');
+          localStorage.removeItem('cursor_room_user');
+          localStorage.removeItem('cursor_room_userId');
+          setCurrentUser(null);
+          setUserId('');
         }
       } catch {
         console.error('Auth verification failed');
@@ -57,11 +111,7 @@ export function useAuth() {
       });
       const data = await response.json();
       if (data.success) {
-        localStorage.setItem('cursor_room_token', data.token);
-        setCurrentUser(data.user);
-        setUsername(data.user.username);
-        setCursorColor(data.user.color);
-        setBrushColor(data.user.color);
+        applyUser(data.user, data.token);
       } else {
         setAuthError(data.error || 'Signup failed');
       }
@@ -84,12 +134,7 @@ export function useAuth() {
       });
       const data = await response.json();
       if (data.success) {
-        localStorage.setItem('cursor_room_token', data.token);
-        setCurrentUser(data.user);
-        setUserId(data.user.userId);
-        setUsername(data.user.username);
-        setCursorColor(data.user.color);
-        setBrushColor(data.user.color);
+        applyUser(data.user, data.token);
       } else {
         setAuthError(data.error || 'Login failed');
       }
@@ -103,6 +148,8 @@ export function useAuth() {
 
   const handleLogout = (onLeaveRoom) => {
     localStorage.removeItem('cursor_room_token');
+    localStorage.removeItem('cursor_room_user');
+    localStorage.removeItem('cursor_room_userId');
     localStorage.removeItem('redirectAfterLogin');
     setCurrentUser(null);
     setUserId('');
