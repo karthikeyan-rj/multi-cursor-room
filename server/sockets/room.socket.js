@@ -3,7 +3,7 @@ const db = require('../db');
 const { JWT_SECRET } = require('../config/jwt');
 const cloudinary = require('../config/cloudinary');
 const { emitActivity } = require('./activity');
-const { activeUsers, socketUserMap } = require('./state');
+const { activeUsers, socketUserMap, emitRoomMembers } = require('./state');
 
 function registerRoomHandlers(io, socket) {
   socket.currentRoomId = null;
@@ -69,7 +69,9 @@ function registerRoomHandlers(io, socket) {
       activeUsers[roomId][socket.id] = {
         id: socket.id,
         userId,
+        username,
         name: displayName,
+        socketId: socket.id,
         color: color || '#aa3bff',
         x: -100,
         y: -100
@@ -104,13 +106,16 @@ function registerRoomHandlers(io, socket) {
         message: `${displayName} joined`
       });
       emitActivity(io, roomId, 'join', displayName, `${displayName} joined`);
-      const members = Object.values(activeUsers[roomId]);
-      const onlineCount = new Set(members.map(m => String(m.userId))).size;
-      io.to(roomId).emit('room-members-updated', { members, onlineCount });
+      emitRoomMembers(io, roomId);
     } catch (err) {
       console.error('Error on join_room:', err);
       socket.emit('error_message', 'Failed to join room properly.');
     }
+  });
+
+  socket.on('get-active-members', () => {
+    const cr = socket.currentRoomId;
+    emitRoomMembers(io, cr);
   });
 
   socket.on('leave_room', () => {
@@ -127,13 +132,12 @@ function registerRoomHandlers(io, socket) {
       });
       emitActivity(io, cr, 'leave', user.name, `${user.name} left`);
       delete activeUsers[cr][socket.id];
-      const members = Object.values(activeUsers[cr] || {});
-      const onlineCount = new Set(members.map(m => String(m.userId))).size;
-      io.to(cr).emit('room-members-updated', { members, onlineCount });
-      socket.leave(cr);
       if (Object.keys(activeUsers[cr]).length === 0) {
         delete activeUsers[cr];
+      } else {
+        emitRoomMembers(io, cr);
       }
+      socket.leave(cr);
       socket.currentRoomId = null;
     }
   });
@@ -169,9 +173,10 @@ function registerRoomHandlers(io, socket) {
         }
       }
 
+      await db.deleteRoom(cr);
+      delete activeUsers[cr];
       io.to(cr).emit('room_deleted');
       io.emit('room_removed', { roomId: room.roomId || cr, id: cr });
-      await db.deleteRoom(cr);
     } catch (err) {
       console.error('Error on delete_room:', err);
       socket.emit('error_message', 'Failed to delete room.');
@@ -224,9 +229,7 @@ function registerRoomHandlers(io, socket) {
         message: `${targetUsername} was kicked`
       });
       emitActivity(io, roomId, 'kick', targetUsername, `${targetUsername} was kicked`);
-      const finalMembers = Object.values(activeUsers[roomId] || {});
-      const finalOnlineCount = new Set(finalMembers.map(m => String(m.userId))).size;
-      io.to(roomId).emit('room-members-updated', { members: finalMembers, onlineCount: finalOnlineCount });
+      emitRoomMembers(io, roomId);
       io.to(roomId).emit('cursor-removed', { userId: targetUserId });
     } catch (err) {
       console.error('Error on kick-user:', err);
@@ -251,12 +254,10 @@ function registerRoomHandlers(io, socket) {
 
       delete activeUsers[cr][socket.id];
 
-      const members = Object.values(activeUsers[cr] || {});
-      const onlineCount = new Set(members.map(m => String(m.userId))).size;
-      io.to(cr).emit('room-members-updated', { members, onlineCount });
-
       if (Object.keys(activeUsers[cr]).length === 0) {
         delete activeUsers[cr];
+      } else {
+        emitRoomMembers(io, cr);
       }
     }
   });

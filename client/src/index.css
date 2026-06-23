@@ -3127,17 +3127,60 @@ body {
 
 /* Danger Modal Styles */
 .confirm-modal-danger {
-  background: rgba(28, 8, 16, 0.88) !important;
-  border: 1px solid rgba(248, 113, 113, 0.35) !important;
-  box-shadow: 0 24px 80px rgba(127, 29, 29, 0.45) !important;
+  background:
+    linear-gradient(145deg, rgba(127, 29, 29, 0.98), rgba(69, 10, 10, 0.98)),
+    rgba(28, 8, 16, 0.98) !important;
+  border: 1px solid rgba(248, 113, 113, 0.45) !important;
+  box-shadow: 0 30px 90px rgba(127, 29, 29, 0.45) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.confirm-modal-danger .confirm-title {
+  color: #fff7ed !important;
+  font-size: 1.2rem;
+  font-weight: 900;
+  margin: 0 0 10px;
+}
+
+.confirm-modal-danger .confirm-message {
+  color: #fecaca !important;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1.55;
+  opacity: 1 !important;
+}
+
+.confirm-modal-danger .confirm-cancel-btn {
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  color: #fff7ed;
+  font-weight: 700;
+}
+
+.confirm-modal-danger .confirm-cancel-btn:hover {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
 }
 
 .confirm-danger-btn {
-  background: linear-gradient(135deg, #ef4444, #be123c) !important;
+  background: linear-gradient(135deg, #ef4444, #b91c1c) !important;
+  border: 1px solid rgba(254, 202, 202, 0.5) !important;
+  box-shadow: 0 14px 34px rgba(185, 28, 28, 0.35) !important;
+  font-weight: 800;
 }
 
 .confirm-danger-btn:hover {
-  box-shadow: 0 0 16px rgba(239, 68, 68, 0.45) !important;
+  background: linear-gradient(135deg, #f87171, #dc2626) !important;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.5) !important;
+  transform: translateY(-1px);
+}
+
+.confirm-danger-btn:disabled,
+.confirm-modal-danger .confirm-cancel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
 }
 
 /* Password toggle styles */
@@ -5378,6 +5421,13 @@ body {
   border-top: 1px solid rgba(248, 113, 113, 0.24);
 }
 
+.danger-zone-description {
+  margin: 8px 0 14px;
+  font-size: 13px;
+  color: #fca5a5;
+  line-height: 1.5;
+}
+
 .delete-room-btn {
   width: 100%; padding: 13px; border-radius: 14px;
   background: rgba(127, 29, 29, 0.34);
@@ -5386,9 +5436,20 @@ body {
   font-weight: 850;
   font-size: 14px;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: all 0.15s ease;
 }
-.delete-room-btn:hover { background: rgba(239,68,68,0.25); }
+.delete-room-btn:hover { background: rgba(239,68,68,0.45); color: #fff; }
+
+.settings-delete-error {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(127, 29, 29, 0.4);
+  color: #fca5a5;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: center;
+}
 
 
 

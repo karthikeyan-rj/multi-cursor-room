@@ -1,7 +1,8 @@
 const bcrypt = require('bcrypt');
 const db = require('../db');
+const cloudinary = require('../config/cloudinary');
 const { emitActivity } = require('../sockets/activity');
-const { activeUsers, socketUserMap } = require('../sockets/state');
+const { activeUsers, socketUserMap, emitRoomMembers } = require('../sockets/state');
 
 async function getRooms(req, res) {
   const rooms = await db.getRooms(req.user.userId, req.user.email);
@@ -124,7 +125,7 @@ async function joinRoom(req, res) {
     await db.addJoinRequest(room.id, req.user.userId, req.user.email, req.user.username);
     const io = req.app.get('io');
     emitActivity(io, room.id, 'join_request', req.user.username, `${req.user.username} requested to join`);
-    io.to(room.id).emit('room-members-updated', { ownerId: room.ownerId });
+    emitRoomMembers(io, room.id);
     return res.status(202).json({
       success: true,
       requiresApproval: true,
@@ -183,7 +184,7 @@ async function kickUser(req, res) {
     }
   }
 
-  io.to(room.id).emit('room-members-updated', { action: 'kicked', targetUserId });
+  emitRoomMembers(io, room.id);
   io.to(room.id).emit('cursor-removed', { userId: targetUserId });
 
   res.json({ success: true, message: 'User removed from room.' });
@@ -211,7 +212,7 @@ async function approveJoinRequest(req, res) {
     }
   }
 
-  io.to(room.id).emit('room-members-updated', { ownerId: room.ownerId });
+  emitRoomMembers(io, room.id);
 
   res.json({ success: true, message: 'User approved and can now join the room.' });
 }
@@ -237,7 +238,7 @@ async function rejectJoinRequest(req, res) {
     }
   }
 
-  io.to(room.id).emit('room-members-updated', { ownerId: room.ownerId });
+  emitRoomMembers(io, room.id);
 
   res.json({ success: true, message: 'Request rejected.' });
 }
@@ -276,10 +277,32 @@ async function deleteRoom(req, res) {
     return res.status(403).json({ success: false, error: 'Only the room owner can delete this room.' });
   }
 
+  const internalId = room.id;
+
+  if (cloudinary.isConfigured) {
+    try {
+      const fileMessages = await db.getFileMessages(internalId);
+      for (const msg of fileMessages) {
+        if (msg.cloudinary_public_id) {
+          try {
+            await cloudinary.uploader.destroy(msg.cloudinary_public_id);
+          } catch (e) {
+            console.error('Cloudinary delete error:', e.message);
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching file messages for cloudinary cleanup:', e.message);
+    }
+  }
+
+  await db.deleteRoom(internalId);
+
   const io = req.app.get('io');
-  await db.deleteRoom(room.id);
-  io.to(room.id).emit('room_deleted');
-  io.emit('room_removed', { roomId: room.roomId });
+  delete activeUsers[internalId];
+  io.to(internalId).emit('room_deleted');
+  io.emit('room_removed', { roomId: room.roomId, id: internalId });
+
   res.json({ success: true, message: 'Room deleted successfully.' });
 }
 
@@ -330,7 +353,7 @@ async function updateSettings(req, res) {
   const io = req.app.get('io');
   emitActivity(io, room.id, 'settings', req.user.username, `${req.user.username} updated room settings`);
 
-  io.to(room.id).emit('room-members-updated', { ownerId: room.ownerId });
+  emitRoomMembers(io, room.id);
 
   res.json({ success: true, message: 'Room settings updated.' });
 }

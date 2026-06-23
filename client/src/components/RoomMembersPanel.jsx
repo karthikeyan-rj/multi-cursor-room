@@ -53,16 +53,40 @@ export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, use
     fetchMembers();
   }, [fetchMembers]);
 
+  const normalizeMembersPayload = useCallback((payload) => {
+    const nextMembers = Array.isArray(payload)
+      ? payload
+      : payload?.members || [];
+    const nextOnlineCount =
+      !Array.isArray(payload) && typeof payload?.onlineCount === 'number'
+        ? payload.onlineCount
+        : new Set(
+            nextMembers
+              .map((m) => m.userId || m.id || m.socketId)
+              .filter(Boolean)
+              .map(String)
+          ).size;
+    return { nextMembers, nextOnlineCount };
+  }, []);
+
   useEffect(() => {
-    const handler = (payload) => {
-      if (payload && payload.members) {
-        setOnlineMembers(payload.members);
-      }
+    socket.emit('get-active-members');
+    const handleUpdate = (payload) => {
+      const { nextMembers } = normalizeMembersPayload(payload);
+      setOnlineMembers(nextMembers);
       fetchMembers();
     };
-    socket.on('room-members-updated', handler);
-    return () => { socket.off('room-members-updated', handler); };
-  }, [fetchMembers]);
+    const handleActiveMembers = (payload) => {
+      const { nextMembers } = normalizeMembersPayload(payload);
+      setOnlineMembers(nextMembers);
+    };
+    socket.on('room-members-updated', handleUpdate);
+    socket.on('active-members', handleActiveMembers);
+    return () => {
+      socket.off('room-members-updated', handleUpdate);
+      socket.off('active-members', handleActiveMembers);
+    };
+  }, [fetchMembers, normalizeMembersPayload]);
 
   const isOwner = isSameUser({ userId }, { userId: ownerId });
 
@@ -125,14 +149,21 @@ export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, use
   };
 
   const onlineUserIds = useMemo(() => {
-    const ids = new Set(onlineMembers.map(m => String(m.userId)));
-    if (userId) ids.add(String(userId));
+    const ids = new Set(
+      onlineMembers
+        .map((m) => m.userId || m.id)
+        .filter(Boolean)
+        .map(String)
+    );
+    if (userId && roomDisplayId) {
+      ids.add(String(userId));
+    }
     return ids;
-  }, [onlineMembers, userId]);
+  }, [onlineMembers, userId, roomDisplayId]);
 
   const isUserOnline = (memberUserId) => onlineUserIds.has(String(memberUserId));
 
-  const onlineCount = typeof activeUserCount === 'number' ? activeUserCount : onlineUserIds.size;
+  const onlineCount = onlineUserIds.size;
 
   const otherParticipants = members.filter(m => !isSameUser({ userId: m.userId }, { userId: ownerId }));
 

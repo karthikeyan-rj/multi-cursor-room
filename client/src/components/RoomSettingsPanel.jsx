@@ -11,6 +11,8 @@ export default function RoomSettingsPanel({ roomDisplayId, roomName: initialName
   const [newPassword, setNewPassword] = useState('');
   const [saving, setSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeletingRoom, setIsDeletingRoom] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const [activities, setActivities] = useState([]);
   const [activitiesLoading, setActivitiesLoading] = useState(true);
 
@@ -118,9 +120,23 @@ export default function RoomSettingsPanel({ roomDisplayId, roomName: initialName
     setSettings(prev => prev ? { ...prev, [field]: !prev[field] } : prev);
   };
 
-  const handleDeleteRoom = () => {
-    setShowDeleteConfirm(false);
-    onDeleteRoom?.();
+  const handleDeleteRoom = async () => {
+    if (isDeletingRoom || !onDeleteRoom) return;
+    const roomIdentifier = roomDisplayId;
+    if (!roomIdentifier) {
+      setDeleteError("Missing room identifier. Please refresh and try again.");
+      return;
+    }
+    try {
+      setIsDeletingRoom(true);
+      setDeleteError("");
+      await onDeleteRoom(roomIdentifier);
+      setShowDeleteConfirm(false);
+    } catch (err) {
+      setDeleteError(err?.message || "Failed to delete room. Please try again.");
+    } finally {
+      setIsDeletingRoom(false);
+    }
   };
 
   const typeIcons = {
@@ -288,6 +304,9 @@ export default function RoomSettingsPanel({ roomDisplayId, roomName: initialName
             <div className="danger-zone">
               <div className="settings-section">
                 <label className="settings-label">Danger Zone</label>
+                <p className="danger-zone-description">
+                  Once you delete a room, all data including chat, drawings, sticky notes, and files are permanently removed.
+                </p>
                 <button
                   className="delete-room-btn"
                   onClick={() => setShowDeleteConfirm(true)}
@@ -302,12 +321,17 @@ export default function RoomSettingsPanel({ roomDisplayId, roomName: initialName
 
       {showDeleteConfirm && (
         <ConfirmationModal
-          message="Are you sure you want to permanently delete this room? This action cannot be undone."
-          confirmLabel="Delete Room"
+          title="Delete Room?"
+          message="This action will permanently delete this room and all its data including chat, drawings, sticky notes, and file uploads. This cannot be undone."
+          confirmLabel={isDeletingRoom ? "Deleting..." : "Delete Room"}
           onConfirm={handleDeleteRoom}
-          onCancel={() => setShowDeleteConfirm(false)}
+          onCancel={() => { if (!isDeletingRoom) setShowDeleteConfirm(false); }}
           isLightBoard={isLightBoard}
+          isDanger={true}
         />
+      )}
+      {deleteError && (
+        <div className="settings-delete-error">{deleteError}</div>
       )}
     </div>
   );
