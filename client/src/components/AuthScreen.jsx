@@ -1,15 +1,15 @@
 import { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { COLORS } from '../constants';
 import Starfield from './Starfield';
 
 export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, onSignup, onColorChange, initialTab }) {
-  const [authTab, setAuthTab] = useState(initialTab || 'login');
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  useEffect(() => {
-    if (initialTab) {
-      setAuthTab(initialTab);
-    }
-  }, [initialTab]);
+  const authTab =
+    initialTab ||
+    (location.pathname === '/register' ? 'signup' : 'login');
   const [authUsername, setAuthUsername] = useState('');
   const [authEmail, setAuthEmail] = useState('');
   const [authPassword, setAuthPassword] = useState('');
@@ -63,7 +63,7 @@ export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, 
           }} />
           <div className="auth-tabs" style={{ display: 'flex', marginBottom: '28px', gap: '4px', background: 'rgba(255,255,255,0.04)', borderRadius: '10px', padding: '3px' }}>
           <button
-            onClick={() => { setAuthTab('login'); setLocalError(''); }}
+            onClick={() => { setLocalError(''); navigate('/login', { replace: false }); }}
             style={{
               flex: 1, padding: '10px', background: authTab === 'login' ? 'rgba(59,130,246,0.12)' : 'transparent',
               border: authTab === 'login' ? '1px solid rgba(59,130,246,0.25)' : '1px solid transparent',
@@ -75,7 +75,7 @@ export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, 
             Login
           </button>
           <button
-            onClick={() => { setAuthTab('signup'); setLocalError(''); }}
+            onClick={() => { setLocalError(''); navigate('/register', { replace: false }); }}
             style={{
               flex: 1, padding: '10px', background: authTab === 'signup' ? 'rgba(59,130,246,0.12)' : 'transparent',
               border: authTab === 'signup' ? '1px solid rgba(59,130,246,0.25)' : '1px solid transparent',
@@ -178,7 +178,7 @@ export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, 
             <div style={{ textAlign: 'center', marginTop: '8px', marginBottom: '-4px' }}>
               <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                 Don't have an account?{' '}
-                <button type="button" onClick={() => { setAuthTab('signup'); setLocalError(''); }} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px', fontWeight: '600', padding: 0, textDecoration: 'underline' }}>
+                <button type="button" onClick={() => { setLocalError(''); navigate('/register', { replace: false }); }} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px', fontWeight: '600', padding: 0, textDecoration: 'underline' }}>
                   Sign up
                 </button>
               </span>
@@ -188,7 +188,7 @@ export default function AuthScreen({ authError, authBusy, cursorColor, onLogin, 
             <div style={{ textAlign: 'center', marginTop: '8px', marginBottom: '-4px' }}>
               <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
                 Already have an account?{' '}
-                <button type="button" onClick={() => { setAuthTab('login'); setLocalError(''); }} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px', fontWeight: '600', padding: 0, textDecoration: 'underline' }}>
+                <button type="button" onClick={() => { setLocalError(''); navigate('/login', { replace: false }); }} style={{ background: 'none', border: 'none', color: 'var(--accent)', cursor: 'pointer', fontSize: '12px', fontWeight: '600', padding: 0, textDecoration: 'underline' }}>
                   Log in
                 </button>
               </span>
