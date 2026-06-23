@@ -6,7 +6,7 @@ import { useClickOutside } from '../utils/useClickOutside';
 import useResizablePanel from '../hooks/useResizablePanel';
 import { unlockAudio } from '../utils/sound';
 
-export default function ChatDrawer({ open, remoteCursors, username, userId, chatHistory, chatInput, onChatInput, onSendChat, onClose, roomId, isLightBoard, replyingTo, onSetReplyTarget, onCancelReply, allowChat = true, allowFiles = true }) {
+export default function ChatDrawer({ open, remoteCursors, username, userId, chatHistory, chatInput, onChatInput, onSendChat, onClose, roomId, isLightBoard, replyingTo, onSetReplyTarget, onCancelReply, allowChat = true, allowFiles = true, activeUserCount }) {
   const listRef = useRef(null);
   const textareaRef = useRef(null);
   const emojiContainerRef = useRef(null);
@@ -114,7 +114,7 @@ export default function ChatDrawer({ open, remoteCursors, username, userId, chat
           </button>
           <span className="chat-active-badge">
             <span className="chat-active-dot" />
-            {Object.keys(remoteCursors).length + 1} active
+            {typeof activeUserCount === 'number' ? activeUserCount : Object.keys(remoteCursors).length + 1} active
           </span>
           <button className="toolbar-btn chat-close-btn" onClick={onClose}>✕</button>
         </div>

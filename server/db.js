@@ -346,6 +346,20 @@ async function clearDrawings(roomId) {
   return true;
 }
 
+async function replaceAllDrawings(roomId, drawings) {
+  await db.collection('drawings').deleteMany({ room_id: roomId });
+  if (drawings && drawings.length > 0) {
+    const docs = drawings.map(d => ({
+      ...d,
+      room_id: roomId,
+      stroke_id: d.id || d.stroke_id,
+      created_at: d.created_at || new Date().toISOString()
+    }));
+    await db.collection('drawings').insertMany(docs);
+  }
+  return true;
+}
+
 async function clearStickyNotes(roomId) {
   await db.collection('sticky_notes').deleteMany({ room_id: roomId });
   return true;
@@ -722,6 +736,7 @@ module.exports = {
   addDrawing,
   deleteDrawingByStrokeId,
   clearDrawings,
+  replaceAllDrawings,
   clearStickyNotes,
   getStickyNotes,
   saveStickyNote,

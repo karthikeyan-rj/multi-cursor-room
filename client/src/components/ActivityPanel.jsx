@@ -19,7 +19,6 @@ export default function ActivityPanel({ roomDisplayId, onClose }) {
         setActivities(data.activities);
       }
     } catch (_) {
-      // silently fail
     } finally {
       setLoading(false);
     }
@@ -69,9 +68,10 @@ export default function ActivityPanel({ roomDisplayId, onClose }) {
   };
 
   return (
-    <div className="activity-panel glass" onClick={e => e.stopPropagation()}>
+    <div className="activity-panel room-glass-panel room-side-drawer" onClick={e => e.stopPropagation()}>
       <div className="activity-panel-header">
         <h3 className="activity-panel-title">Activity</h3>
+        <span className="activity-panel-subtitle">Recent room events</span>
         <button className="activity-panel-close" onClick={onClose} aria-label="Close">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -82,14 +82,17 @@ export default function ActivityPanel({ roomDisplayId, onClose }) {
         {loading ? (
           <div className="activity-panel-loading">Loading...</div>
         ) : activities.length === 0 ? (
-          <div className="activity-panel-empty">No activity yet</div>
+          <div className="activity-panel-empty">
+            <div className="activity-empty-icon">•</div>
+            <div>No activity yet</div>
+          </div>
         ) : (
           activities.map((a, i) => (
             <div key={i} className={`activity-item ${a.type}`}>
-              <span className="activity-icon">{typeIcons[a.type] || '•'}</span>
-              <div className="activity-content">
-                <span className="activity-message">{a.message}</span>
-                <span className="activity-time">{formatTime(a.createdAt)}</span>
+              <div className="activity-item-icon">{typeIcons[a.type] || '•'}</div>
+              <div className="activity-item-content">
+                <div className="activity-item-message">{a.message}</div>
+                <div className="activity-item-time">{formatTime(a.createdAt)}</div>
               </div>
             </div>
           ))

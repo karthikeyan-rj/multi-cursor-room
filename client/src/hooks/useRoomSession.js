@@ -24,6 +24,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   const [roomCreatedBy, setRoomCreatedBy] = useState('');
   const [roomOwnerId, setRoomOwnerId] = useState('');
   const [remoteCursors, setRemoteCursors] = useState({});
+  const [activeUserCount, setActiveUserCount] = useState(0);
   const [drawings, setDrawings] = useState([]);
   const [stickyNotes, setStickyNotes] = useState([]);
   const [chatHistory, setChatHistory] = useState([]);
@@ -50,6 +51,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   useEffect(() => { chatOpenRef.current = chatOpen; }, [chatOpen]);
   const drawingsRef = useRef(drawings);
   useEffect(() => { drawingsRef.current = drawings; }, [drawings]);
+  const undoStackRef = useRef([]);
   const viewportRef = useRef(viewport);
   useEffect(() => { viewportRef.current = viewport; }, [viewport]);
   function screenToBoard(screenX, screenY) {
@@ -79,6 +81,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
     setCurrentRoomName('');
     setCurrentRoomDisplayId('');
     setRemoteCursors({});
+    setActiveUserCount(0);
     setDrawings([]);
     setStickyNotes([]);
     setChatHistory([]);
@@ -111,11 +114,29 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       const userMap = {};
       activeUsers.forEach(u => { if (u.id !== socket.id) userMap[u.id] = u; });
       setRemoteCursors(userMap);
+      const uniqueCount = new Set(activeUsers.map(u => String(u.userId || u.id))).size;
+      setActiveUserCount(uniqueCount);
     });
 
     socket.on('user_joined', (user) => {
       if (user.id === socket.id) return;
       setRemoteCursors(prev => ({ ...prev, [user.id]: user }));
+    });
+
+    socket.on('room-members-updated', (payload) => {
+      const nextMembers = Array.isArray(payload)
+        ? payload
+        : payload?.members || [];
+      const nextOnlineCount =
+        !Array.isArray(payload) && typeof payload?.onlineCount === 'number'
+          ? payload.onlineCount
+          : new Set(
+              nextMembers
+                .map((m) => m.userId || m.id || m.socketId)
+                .filter(Boolean)
+                .map(String)
+            ).size;
+      setActiveUserCount(nextOnlineCount);
     });
 
     socket.on('user_left', (id) => {
@@ -166,6 +187,12 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
     socket.on('canvas_cleared', () => {
       setDrawings([]);
       redraw(canvasRef.current, [], viewportRef.current);
+    });
+
+    socket.on('canvas:restored', ({ drawings }) => {
+      const mapped = drawings.map(d => ({ ...d, id: d.stroke_id || d.id }));
+      setDrawings(mapped);
+      redraw(canvasRef.current, mapped, viewportRef.current);
     });
 
     socket.on('board:all-cleared', () => {
@@ -294,12 +321,14 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
     return () => {
       socket.off('room_data');
       socket.off('user_joined');
+      socket.off('room-members-updated');
       socket.off('user_left');
       socket.off('board_color_changed');
       socket.off('cursor_moved');
       socket.off('stroke_drawn');
       socket.off('stroke_undone');
       socket.off('canvas_cleared');
+      socket.off('canvas:restored');
       socket.off('board:all-cleared');
       socket.off('canvas:shape');
       socket.off('canvas:text');
@@ -474,7 +503,20 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   };
 
   const undoLastStroke = useCallback(() => {
+    const isOwner = String(roomOwnerId) === String(userId);
+    if (!isOwner && !roomAllowDrawing) {
+      showToast?.("Drawing is disabled by the room owner.");
+      return;
+    }
     const current = drawingsRef.current;
+    if (undoStackRef.current.length > 0 && current.length === 0) {
+      const prev = undoStackRef.current.pop();
+      setDrawings([...prev]);
+      drawingsRef.current = [...prev];
+      redraw(canvasRef.current, prev, viewportRef.current);
+      socket.emit('canvas:undo-full', { roomId: currentRoomId, drawings: prev });
+      return;
+    }
     if (current.length === 0) return;
     const last = current[current.length - 1];
     if (last?.id) socket.emit('canvas:undo', { strokeId: last.id });
@@ -483,10 +525,18 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       redraw(canvasRef.current, next, viewportRef.current);
       return next;
     });
-  }, []);
+  }, [roomAllowDrawing, currentRoomId, roomOwnerId, userId]);
 
-  const clearCanvas = () => { socket.emit('clear_canvas'); };
-  const clearBoard = () => { socket.emit('board:clear-all'); };
+  const clearCanvas = () => {
+    const current = drawingsRef.current;
+    if (current.length > 0) undoStackRef.current.push([...current]);
+    socket.emit('clear_canvas');
+  };
+  const clearBoard = () => {
+    const current = drawingsRef.current;
+    if (current.length > 0) undoStackRef.current.push([...current]);
+    socket.emit('board:clear-all');
+  };
   const handleDeleteRoom = () => { socket.emit('delete_room'); };
 
   const handleBoardClick = (e) => {
@@ -628,7 +678,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
 
   return {
     socket, currentRoomId, currentRoomName, currentRoomDisplayId, roomCreatedBy, roomOwnerId,
-    remoteCursors, drawings, stickyNotes, chatHistory, reactions,
+    remoteCursors, activeUserCount, drawings, stickyNotes, chatHistory, reactions,
     unreadCount, setUnreadCount, myPos, isDrawing, currentStroke, draggedNote,
     canvasRef, chatOpenRef, chatInput, setChatInput, currentShape,
     viewport, setViewport, isPanning, boardColor,

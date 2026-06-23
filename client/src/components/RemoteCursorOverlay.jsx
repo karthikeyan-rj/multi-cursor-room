@@ -1,23 +1,31 @@
-export default function RemoteCursorOverlay({ remoteCursors, viewport }) {
-  return Object.values(remoteCursors).map(user => (
+import { socket } from '../hooks/useRoomSession';
+
+export default function RemoteCursorOverlay({ remoteCursors, viewport, userId }) {
+  const visibleCursors = Object.values(remoteCursors).filter((cursor) => {
+    if (!cursor) return false;
+    const sameUser =
+      userId &&
+      cursor.userId &&
+      String(cursor.userId) === String(userId);
+    const sameSocket =
+      socket?.id &&
+      cursor.id &&
+      String(cursor.id) === String(socket.id);
+    return !sameUser && !sameSocket;
+  });
+
+  return visibleCursors.map(user => (
     user.x !== undefined && (
-      <div key={user.id} style={{
-        position: 'fixed',
+      <div key={user.id} className="remote-cursor" style={{
         left: user.x * viewport.scale + viewport.x,
-        top: user.y * viewport.scale + viewport.y,
-        pointerEvents: 'none',
-        transform: 'translate(-2px, -2px)',
-        transition: 'left 0.08s cubic-bezier(0.1, 0.8, 0.25, 1), top 0.08s cubic-bezier(0.1, 0.8, 0.25, 1)',
-        zIndex: 90
+        top: user.y * viewport.scale + viewport.y
       }}>
-        <svg width="22" height="22" viewBox="0 0 20 20">
-          <path d="M0 0 L0 14 L4 10 L8 18 L10 17 L6 9 L11 9 Z" fill={user.color} stroke="#000" strokeWidth="1.5" />
-        </svg>
-        <div style={{
-          position: 'absolute', top: 20, left: 10, background: user.color, color: '#000',
-          padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 'bold',
-          whiteSpace: 'nowrap', boxShadow: `0 4px 12px ${user.color}44`
-        }}>
+        <div className="remote-cursor-pointer-wrap" style={{ color: user.color }}>
+          <svg className="remote-cursor-pointer" width="13" height="13" viewBox="0 0 20 20" fill={user.color}>
+            <path d="M0 0 L0 14 L4 10 L8 18 L10 17 L6 9 L11 9 Z" />
+          </svg>
+        </div>
+        <div className="remote-cursor-label">
           {user.name}
         </div>
       </div>

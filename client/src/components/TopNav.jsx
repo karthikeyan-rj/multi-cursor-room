@@ -1,4 +1,4 @@
-export default function TopNav({ roomName, roomDisplayId, roomInternalId, userId, userEmail, roomOwnerId, username, roomCreatedBy, cursorColor, remoteCursors, chatOpen, onToggleChat, onCopy, unreadCount, isLightBoard, onLeaveRoomRequest, onToggleMembers, membersOpen, pendingRequestsCount, onToggleActivity, activityOpen, onToggleSettings, settingsOpen }) {
+export default function TopNav({ roomName, roomDisplayId, roomInternalId, userId, userEmail, roomOwnerId, username, roomCreatedBy, cursorColor, activeUserCount, activeRoomPanel, onToggleChat, onCopy, unreadCount, isLightBoard, onLeaveRoomRequest, onToggleMembers, pendingRequestsCount, onToggleSettings }) {
   const isCurrentUserOwner =
     String(roomOwnerId) === String(userId) ||
     userEmail === roomCreatedBy;
@@ -7,7 +7,7 @@ export default function TopNav({ roomName, roomDisplayId, roomInternalId, userId
     ? `${roomCreatedBy}'s Room`
     : roomName;
 
-  const onlineCount = remoteCursors ? Object.keys(remoteCursors).length : 0;
+  const onlineCount = typeof activeUserCount === 'number' ? activeUserCount : 1;
 
   return (
     <>
@@ -23,15 +23,13 @@ export default function TopNav({ roomName, roomDisplayId, roomInternalId, userId
             <div className="room-name-row">
               <h1 className="room-name-display">
                 {ownerLabel}
-                {isCurrentUserOwner && (
-                  <span className="room-owner-badge">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-                    </svg>
-                    Owner
-                  </span>
-                )}
+                <span className="room-owner-badge">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                  </svg>
+                  {isCurrentUserOwner ? 'Owner' : roomCreatedBy || 'Owner'}
+                </span>
               </h1>
             </div>
             <div className="room-id-row">
@@ -48,30 +46,22 @@ export default function TopNav({ roomName, roomDisplayId, roomInternalId, userId
             </div>
           </div>
         </div>
-      <div className="nav-right">
+      <div className="room-header-actions">
         <button
-          className={`toolbar-btn ${activityOpen ? 'active' : ''}`}
-          onClick={onToggleActivity}
-          title="Room Activity"
+          className={`toolbar-btn room-action-btn ${activeRoomPanel === 'chat' ? 'active' : ''}`}
+          onClick={onToggleChat} title="Room Chat" style={{ position: 'relative' }}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
           </svg>
+          {unreadCount > 0 && (
+            <span className="unread-badge">
+              {unreadCount > 9 ? '9+' : unreadCount}
+            </span>
+          )}
         </button>
-        {isCurrentUserOwner && (
-          <button
-            className={`toolbar-btn ${settingsOpen ? 'active' : ''}`}
-            onClick={onToggleSettings}
-            title="Room Settings"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-          </button>
-        )}
         <button
-          className={`toolbar-btn ${membersOpen ? 'active' : ''}`}
+          className={`toolbar-btn room-action-btn ${activeRoomPanel === 'members' ? 'active' : ''}`}
           onClick={onToggleMembers}
           title="Room Members"
           style={{ position: 'relative' }}
@@ -87,17 +77,14 @@ export default function TopNav({ roomName, roomDisplayId, roomInternalId, userId
           )}
         </button>
         <button
-          className={`toolbar-btn ${chatOpen ? 'active' : ''}`}
-          onClick={onToggleChat} title="Room Chat" style={{ position: 'relative' }}
+          className={`toolbar-btn room-action-btn ${activeRoomPanel === 'settings' ? 'active' : ''}`}
+          onClick={onToggleSettings}
+          title={isCurrentUserOwner ? "Room Settings" : "Room Info"}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
-          {unreadCount > 0 && (
-            <span className="unread-badge">
-              {unreadCount > 9 ? '9+' : unreadCount}
-            </span>
-          )}
         </button>
       </div>
       </nav>

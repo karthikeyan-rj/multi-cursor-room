@@ -1,38 +1,41 @@
 import { useRef, useEffect } from 'react';
 
 export default function CursorTrail({ color }) {
-  const containerRef = useRef(null);
+  const localRef = useRef(null);
+  const rafRef = useRef(null);
+  const latestRef = useRef({ x: -9999, y: -9999 });
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const dots = [];
-    for (let i = 0; i < 8; i++) {
-      const dot = document.createElement('div');
-      const size = 4 + i * 0.4;
-      dot.style.cssText = `position:fixed;border-radius:50%;pointer-events:none;z-index:60;background:${color};opacity:0;transform:translate(-50%,-50%);width:${size}px;height:${size}px;`;
-      container.appendChild(dot);
-      dots.push(dot);
-    }
-
-    let index = 0;
-    const onMove = (e) => {
-      const dot = dots[index % dots.length];
-      dot.style.left = e.clientX + 'px';
-      dot.style.top = e.clientY + 'px';
-      dot.style.opacity = '0.5';
-      dot.style.transition = 'none';
-      setTimeout(() => { dot.style.opacity = '0'; }, 100);
-      index++;
+    const handlePointerMove = (e) => {
+      latestRef.current = { x: e.clientX, y: e.clientY };
+      if (rafRef.current) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        const el = localRef.current;
+        if (!el) return;
+        const { x, y } = latestRef.current;
+        el.style.transform = `translate3d(${x - 9}px, ${y - 9}px, 0)`;
+      });
     };
 
-    window.addEventListener('mousemove', onMove);
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
+
     return () => {
-      window.removeEventListener('mousemove', onMove);
-      dots.forEach(d => d.remove());
+      window.removeEventListener('pointermove', handlePointerMove);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-  }, [color]);
+  }, []);
 
-  return <div ref={containerRef} />;
+  const glowColor = color || 'rgba(59, 130, 246, 0.42)';
+
+  return (
+    <div
+      ref={localRef}
+      className="local-cursor-effect"
+      aria-hidden="true"
+      style={{
+        '--glow-color': glowColor,
+      }}
+    />
+  );
 }

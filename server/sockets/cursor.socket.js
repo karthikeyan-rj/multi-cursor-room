@@ -5,11 +5,15 @@ function registerCursorHandlers(io, socket) {
     const cr = socket.currentRoomId;
     if (!cr || !activeUsers[cr] || !activeUsers[cr][socket.id]) return;
 
-    activeUsers[cr][socket.id].x = x;
-    activeUsers[cr][socket.id].y = y;
+    const user = activeUsers[cr][socket.id];
+    user.x = x;
+    user.y = y;
 
     socket.to(cr).emit('cursor_moved', {
       id: socket.id,
+      userId: user.userId,
+      username: user.name,
+      color: user.color,
       x,
       y
     });

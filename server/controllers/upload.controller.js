@@ -58,6 +58,12 @@ async function uploadFile(req, res) {
         return res.status(403).json({ success: false, error: 'You are not a member of this room.' });
       }
 
+      const isOwner = String(room.ownerId) === String(req.user.userId);
+      const allowFiles = room.allowFiles !== undefined ? room.allowFiles : true;
+      if (!isOwner && !allowFiles) {
+        return res.status(403).json({ success: false, error: 'File uploads are disabled by the room owner.' });
+      }
+
       const cleanName = sanitizeFileName(req.file.originalname);
       let fileUrl, cloudinaryPublicId;
 

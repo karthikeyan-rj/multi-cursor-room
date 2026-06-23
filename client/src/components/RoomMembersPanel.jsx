@@ -21,12 +21,13 @@ function isSameUser(a, b) {
   return false;
 }
 
-export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, username, cursorColor, remoteCursors, onClose }) {
+export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, username, cursorColor, onClose, activeUserCount }) {
   const [members, setMembers] = useState([]);
   const [ownerId, setOwnerId] = useState(null);
   const [ownerName, setOwnerName] = useState('');
   const [joinRequests, setJoinRequests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [onlineMembers, setOnlineMembers] = useState([]);
 
   const fetchMembers = useCallback(async () => {
     try {
@@ -53,7 +54,12 @@ export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, use
   }, [fetchMembers]);
 
   useEffect(() => {
-    const handler = () => fetchMembers();
+    const handler = (payload) => {
+      if (payload && payload.members) {
+        setOnlineMembers(payload.members);
+      }
+      fetchMembers();
+    };
     socket.on('room-members-updated', handler);
     return () => { socket.off('room-members-updated', handler); };
   }, [fetchMembers]);
@@ -119,23 +125,23 @@ export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, use
   };
 
   const onlineUserIds = useMemo(() => {
-    return new Set(Object.values(remoteCursors).map(u => String(u.userId)));
-  }, [remoteCursors]);
+    const ids = new Set(onlineMembers.map(m => String(m.userId)));
+    if (userId) ids.add(String(userId));
+    return ids;
+  }, [onlineMembers, userId]);
 
   const isUserOnline = (memberUserId) => onlineUserIds.has(String(memberUserId));
 
-  const onlineCount = useMemo(() => {
-    return members.filter(m => onlineUserIds.has(String(m.userId))).length + (onlineUserIds.has(String(ownerId)) ? 1 : 0);
-  }, [members, ownerId, onlineUserIds]);
+  const onlineCount = typeof activeUserCount === 'number' ? activeUserCount : onlineUserIds.size;
 
   const otherParticipants = members.filter(m => !isSameUser({ userId: m.userId }, { userId: ownerId }));
 
   const currentUserObj = { userId, email: userEmail };
 
   return (
-    <div className="members-panel glass" onClick={e => e.stopPropagation()}>
+    <div className="members-panel room-glass-panel room-side-drawer" onClick={e => e.stopPropagation()}>
       <div className="members-panel-header">
-        <h3 className="members-panel-title">Room Members <span className="members-online-count">{onlineCount} online</span></h3>
+        <h3 className="members-panel-title">Members <span className="members-online-count">{onlineCount} online</span></h3>
         <button className="members-panel-close" onClick={onClose} aria-label="Close">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -147,84 +153,78 @@ export default function RoomMembersPanel({ roomDisplayId, userId, userEmail, use
           <div className="members-panel-loading">Loading...</div>
         ) : (
           <>
-            <div className="members-panel-section-label">Owner</div>
-            <div className="members-panel-item owner-item">
-              <div className="members-panel-avatar" style={{ backgroundColor: isOwner ? cursorColor : '#888' }}>
+            {/* Owner */}
+            <div className="member-row owner-row">
+              <div className="member-avatar" style={{ backgroundColor: cursorColor }}>
                 {ownerName.charAt(0).toUpperCase()}
               </div>
-              <div className="members-panel-info">
-                <span className="members-panel-name">
+              <div className="member-info">
+                <div className="member-name">
                   {ownerName}
-                  {isOwner && <span className="members-panel-you"> (You)</span>}
-                </span>
-                <span className="members-panel-badge owner-badge">Owner</span>
+                  {isSameUser({ userId: ownerId }, currentUserObj) && <span className="member-you"> (You)</span>}
+                </div>
+                <div className="member-meta">
+                  <span className="member-badge owner-badge">Owner</span>
+                  <span className={`member-badge ${isUserOnline(ownerId) ? 'online-badge' : 'offline-badge'}`}>
+                    {isUserOnline(ownerId) ? 'Online' : 'Offline'}
+                  </span>
+                </div>
               </div>
-              <span className={`members-presence-badge ${isUserOnline(ownerId) ? 'online' : 'offline'}`}>
-                {isUserOnline(ownerId) ? 'Online' : 'Offline'}
-              </span>
             </div>
 
-            <div className="members-panel-section-label">Participants</div>
-            {otherParticipants.length === 0 ? (
-              <div className="members-panel-empty">No other participants</div>
-            ) : (
-              otherParticipants.map((member, i) => {
-                const isYou = isSameUser(member, currentUserObj);
-                return (
-                  <div key={member.userId || i} className="members-panel-item">
-                    <div className="members-panel-avatar" style={{ backgroundColor: isYou ? cursorColor : '#555' }}>
-                      {(member.username || 'U').charAt(0).toUpperCase()}
+            {/* Participants */}
+            {otherParticipants.length > 0 && (
+              <div className="members-panel-section-label">Participants</div>
+            )}
+            {otherParticipants.map((member, i) => {
+              const isYou = isSameUser(member, currentUserObj);
+              return (
+                <div key={member.userId || i} className="member-row">
+                  <div className="member-avatar" style={{ backgroundColor: isYou ? cursorColor : '#475569' }}>
+                    {(member.username || member.email || 'U').charAt(0).toUpperCase()}
+                  </div>
+                  <div className="member-info">
+                    <div className="member-name">
+                      {member.username || member.email || 'Unknown'}
+                      {isYou && <span className="member-you"> (You)</span>}
                     </div>
-                    <div className="members-panel-info">
-                      <span className="members-panel-name">
-                        {member.username || member.email || 'Unknown'}
-                        {isYou && <span className="members-panel-you"> (You)</span>}
+                    <div className="member-meta">
+                      <span className={`member-badge ${isUserOnline(member.userId) ? 'online-badge' : 'offline-badge'}`}>
+                        {isUserOnline(member.userId) ? 'Online' : 'Offline'}
                       </span>
                     </div>
-                    <span className={`members-presence-badge ${isUserOnline(member.userId) ? 'online' : 'offline'}`}>
-                      {isUserOnline(member.userId) ? 'Online' : 'Offline'}
-                    </span>
-                    {isOwner && !isYou && (
-                      <button
-                        className="members-panel-kick-btn"
-                        onClick={() => handleKick(member.userId)}
-                        title="Kick this user"
-                      >
-                        Kick
-                      </button>
-                    )}
                   </div>
-                );
-              })
-            )}
+                  {isOwner && !isYou && (
+                    <button className="member-kick-btn" onClick={() => handleKick(member.userId)} title="Remove this user">
+                      Kick
+                    </button>
+                  )}
+                </div>
+              );
+            })}
 
-            {isOwner && joinRequests.length > 0 && (
+            {/* Pending join requests */}
+            {isOwner && joinRequests.filter(r => r.status === 'pending').length > 0 && (
               <>
                 <div className="members-panel-section-label">Pending Requests</div>
                 {joinRequests.filter(r => r.status === 'pending').map((req, i) => (
-                  <div key={req.userId || i} className="members-panel-item request-item">
-                    <div className="members-panel-avatar" style={{ backgroundColor: '#555' }}>
-                      {(req.username || 'U').charAt(0).toUpperCase()}
+                  <div key={req.userId || i} className="member-row request-row">
+                    <div className="member-avatar" style={{ backgroundColor: '#64748b' }}>
+                      {(req.username || req.email || 'U').charAt(0).toUpperCase()}
                     </div>
-                    <div className="members-panel-info">
-                      <span className="members-panel-name">{req.username || req.email || 'Unknown'}</span>
-                      <span className="members-panel-status">pending</span>
+                    <div className="member-info">
+                      <div className="member-name">{req.username || req.email || 'Unknown'}</div>
+                      <div className="member-meta">
+                        <span className="member-badge pending-badge">Pending</span>
+                      </div>
                     </div>
-                    <div className="members-panel-actions">
-                      <button
-                        className="members-panel-approve-btn"
-                        onClick={() => handleApprove(req.userId)}
-                        title="Approve"
-                      >
+                    <div className="member-request-actions">
+                      <button className="member-approve-btn" onClick={() => handleApprove(req.userId)} title="Approve">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <polyline points="20 6 9 17 4 12" />
                         </svg>
                       </button>
-                      <button
-                        className="members-panel-reject-btn"
-                        onClick={() => handleReject(req.userId)}
-                        title="Reject"
-                      >
+                      <button className="member-reject-btn" onClick={() => handleReject(req.userId)} title="Reject">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                           <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                         </svg>

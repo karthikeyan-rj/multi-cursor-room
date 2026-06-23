@@ -401,6 +401,7 @@ function RoomRouteWrapper({
       roomCreatedBy={session.roomCreatedBy}
       roomOwnerId={session.roomOwnerId}
       remoteCursors={session.remoteCursors}
+      activeUserCount={session.activeUserCount}
       stickyNotes={session.stickyNotes}
       chatHistory={session.chatHistory}
       reactions={session.reactions}

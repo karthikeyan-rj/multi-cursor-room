@@ -104,7 +104,9 @@ function registerRoomHandlers(io, socket) {
         message: `${displayName} joined`
       });
       emitActivity(io, roomId, 'join', displayName, `${displayName} joined`);
-      io.to(roomId).emit('room-members-updated', { ownerId: room.ownerId });
+      const members = Object.values(activeUsers[roomId]);
+      const onlineCount = new Set(members.map(m => String(m.userId))).size;
+      io.to(roomId).emit('room-members-updated', { members, onlineCount });
     } catch (err) {
       console.error('Error on join_room:', err);
       socket.emit('error_message', 'Failed to join room properly.');
@@ -116,6 +118,7 @@ function registerRoomHandlers(io, socket) {
     if (cr && activeUsers[cr] && activeUsers[cr][socket.id]) {
       const user = activeUsers[cr][socket.id];
       socket.to(cr).emit('user_left', socket.id);
+      socket.to(cr).emit('cursor-removed', { userId: user.userId, socketId: socket.id });
       socket.to(cr).emit('room-activity', {
         type: 'leave',
         username: user.name,
@@ -123,8 +126,10 @@ function registerRoomHandlers(io, socket) {
         message: `${user.name} left`
       });
       emitActivity(io, cr, 'leave', user.name, `${user.name} left`);
-      io.to(cr).emit('room-members-updated', {});
       delete activeUsers[cr][socket.id];
+      const members = Object.values(activeUsers[cr] || {});
+      const onlineCount = new Set(members.map(m => String(m.userId))).size;
+      io.to(cr).emit('room-members-updated', { members, onlineCount });
       socket.leave(cr);
       if (Object.keys(activeUsers[cr]).length === 0) {
         delete activeUsers[cr];
@@ -219,7 +224,9 @@ function registerRoomHandlers(io, socket) {
         message: `${targetUsername} was kicked`
       });
       emitActivity(io, roomId, 'kick', targetUsername, `${targetUsername} was kicked`);
-      io.to(roomId).emit('room-members-updated', { action: 'kicked', targetUserId });
+      const finalMembers = Object.values(activeUsers[roomId] || {});
+      const finalOnlineCount = new Set(finalMembers.map(m => String(m.userId))).size;
+      io.to(roomId).emit('room-members-updated', { members: finalMembers, onlineCount: finalOnlineCount });
       io.to(roomId).emit('cursor-removed', { userId: targetUserId });
     } catch (err) {
       console.error('Error on kick-user:', err);
@@ -233,6 +240,7 @@ function registerRoomHandlers(io, socket) {
     if (cr && activeUsers[cr] && activeUsers[cr][socket.id]) {
       const user = activeUsers[cr][socket.id];
       socket.to(cr).emit('user_left', socket.id);
+      io.to(cr).emit('cursor-removed', { userId: user.userId, socketId: socket.id });
       io.to(cr).emit('room-activity', {
         type: 'leave',
         username: user.name,
@@ -243,7 +251,9 @@ function registerRoomHandlers(io, socket) {
 
       delete activeUsers[cr][socket.id];
 
-      io.to(cr).emit('room-members-updated', {});
+      const members = Object.values(activeUsers[cr] || {});
+      const onlineCount = new Set(members.map(m => String(m.userId))).size;
+      io.to(cr).emit('room-members-updated', { members, onlineCount });
 
       if (Object.keys(activeUsers[cr]).length === 0) {
         delete activeUsers[cr];

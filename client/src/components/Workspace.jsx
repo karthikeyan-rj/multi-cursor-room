@@ -4,33 +4,19 @@ import TopNav from './TopNav';
 import FloatingToolbar from './FloatingToolbar';
 import ChatDrawer from './ChatDrawer';
 import RoomMembersPanel from './RoomMembersPanel';
-import ActivityPanel from './ActivityPanel';
+
 import RoomSettingsPanel from './RoomSettingsPanel';
 import StickyNote from './StickyNote';
 import RemoteCursorOverlay from './RemoteCursorOverlay';
 import CursorTrail from './CursorTrail';
+
 import BoardColorPicker from './BoardColorPicker';
 import ConfirmationModal from './ConfirmationModal';
 import { getLuminance } from '../utils/color';
 import { SERVER_URL } from '../config';
 
-function isNativeCursorElement(target) {
-  if (!target || !target.tagName) return false;
-  const tag = target.tagName.toLowerCase();
-  if (['button', 'a', 'input', 'textarea', 'select', 'option'].includes(tag)) return true;
-  if (target.closest?.('button, a, input, textarea, select, option, [role="button"], [contenteditable="true"]')) return true;
-  try {
-    const cursor = window.getComputedStyle(target).cursor;
-    if (!cursor || cursor === 'auto' || cursor === 'default' || cursor === 'none') return false;
-    if (cursor.startsWith('url(')) return false;
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export default function Workspace({
-  currentRoomName, currentRoomDisplayId, currentRoomId, userId, userEmail, roomCreatedBy, roomOwnerId, remoteCursors, stickyNotes, chatHistory,
+  currentRoomName, currentRoomDisplayId, currentRoomId, userId, userEmail, roomCreatedBy, roomOwnerId, remoteCursors, activeUserCount, stickyNotes, chatHistory,
   reactions, unreadCount, myPos, activeTool, brushColor, brushWidth, chatOpen, chatInput,
   username, cursorColor, canvasRef, textInput, textInputRef,
   onLeaveRoom, onDeleteRoom, onSetActiveTool, onSetBrushColor, onSetBrushWidth,
@@ -45,14 +31,32 @@ export default function Workspace({
   roomAllowChat, roomAllowFiles, roomAllowDrawing, roomAllowStickyNotes
 }) {
   const [tempText, setTempText] = useState('');
-  const [hideLocalCursor, setHideLocalCursor] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const exportMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (exportMenuRef.current && !exportMenuRef.current.contains(e.target)) {
+        setShowExportMenu(false);
+      }
+    };
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') setShowExportMenu(false);
+    };
+    if (showExportMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('keydown', handleEscape);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [showExportMenu]);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
-  const [membersOpen, setMembersOpen] = useState(false);
+  const [activeRoomPanel, setActiveRoomPanel] = useState(null);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const [activityToasts, setActivityToasts] = useState([]);
-  const [activityOpen, setActivityOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [showExportMenu, setShowExportMenu] = useState(false);
+  const [roomActivities, setRoomActivities] = useState([]);
   const [roomName, setRoomName] = useState(currentRoomName);
   const toastTimeoutsRef = useRef([]);
   const idleTimerRef = useRef(null);
@@ -60,6 +64,10 @@ export default function Workspace({
   lastActivityRef.current = Date.now();
   const isLightBoard = useMemo(() => boardColor ? getLuminance(boardColor) > 0.55 : false, [boardColor]);
   const isOwner = String(roomOwnerId) === String(userId);
+  const effectiveAllowChat = isOwner || roomAllowChat;
+  const effectiveAllowFiles = isOwner || roomAllowFiles;
+  const effectiveAllowDrawing = isOwner || roomAllowDrawing;
+  const effectiveAllowStickyNotes = isOwner || roomAllowStickyNotes;
 
   const fetchPendingRequestsCount = useCallback(async () => {
     if (!currentRoomDisplayId) return;
@@ -109,14 +117,6 @@ export default function Workspace({
       toastTimeoutsRef.current.forEach(clearTimeout);
       toastTimeoutsRef.current = [];
     };
-  }, []);
-
-  useEffect(() => {
-    const handler = (e) => {
-      setHideLocalCursor(isNativeCursorElement(e.target));
-    };
-    document.addEventListener('mousemove', handler, { passive: true });
-    return () => document.removeEventListener('mousemove', handler);
   }, []);
 
   // Idle detection for presence status
@@ -180,7 +180,6 @@ export default function Workspace({
       })
     ].join('\n');
     downloadFile(lines, `${(roomName || currentRoomName || 'room').replace(/\s+/g, '-')}-chat-${new Date().toISOString().split('T')[0]}.txt`, 'text/plain');
-    setShowExportMenu(false);
   };
 
   const handleExportStickyNotes = () => {
@@ -191,7 +190,6 @@ export default function Workspace({
       createdAt: n.created_at || n.createdAt
     }));
     downloadFile(JSON.stringify(data, null, 2), `${(roomName || currentRoomName || 'room').replace(/\s+/g, '-')}-notes-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
-    setShowExportMenu(false);
   };
 
   const handleExportSummary = async () => {
@@ -214,7 +212,6 @@ export default function Workspace({
       stickyNoteCount: stickyNotes?.length || 0
     };
     downloadFile(JSON.stringify(summary, null, 2), `${(roomName || currentRoomName || 'room').replace(/\s+/g, '-')}-summary-${new Date().toISOString().split('T')[0]}.json`, 'application/json');
-    setShowExportMenu(false);
   };
 
   const downloadFile = (content, filename, mimeType) => {
@@ -229,6 +226,20 @@ export default function Workspace({
     URL.revokeObjectURL(url);
   };
 
+  const handleToggleChat = useCallback((e, forceClose) => {
+    setShowExportMenu(false);
+    if (forceClose === false) {
+      setActiveRoomPanel(null);
+      onToggleChat(e, false);
+    } else if (chatOpen) {
+      setActiveRoomPanel(null);
+      onToggleChat(e);
+    } else {
+      setActiveRoomPanel('chat');
+      onToggleChat(e);
+    }
+  }, [chatOpen, onToggleChat]);
+
   const handleRoomNameChange = (newName) => {
     setRoomName(newName);
   };
@@ -237,56 +248,29 @@ export default function Workspace({
     <div className={`workspace-container ${isLightBoard ? 'light-board' : 'dark-board'}`} onClick={canvasClick}>
       <div className="grid-background" style={boardColor ? { backgroundColor: boardColor } : undefined} />
 
-      <TopNav
-        roomName={roomName || currentRoomName}
-        roomDisplayId={currentRoomDisplayId}
-        roomInternalId={currentRoomId}
-        userId={userId}
-        userEmail={userEmail}
-        roomOwnerId={roomOwnerId}
-        username={username}
-        roomCreatedBy={roomCreatedBy}
-        cursorColor={cursorColor}
-        remoteCursors={remoteCursors}
-        chatOpen={chatOpen}
-        unreadCount={unreadCount}
-        onToggleChat={onToggleChat}
-        onLeaveRoom={onLeaveRoom}
-        onLeaveRoomRequest={() => setShowLeaveConfirm(true)}
-        onDeleteRoom={onDeleteRoom}
-        onCopy={onCopy}
-        isLightBoard={isLightBoard}
-        onToggleMembers={() => setMembersOpen(v => !v)}
-        membersOpen={membersOpen}
-        pendingRequestsCount={pendingRequestsCount}
-        onToggleActivity={() => setActivityOpen(v => !v)}
-        activityOpen={activityOpen}
-        onToggleSettings={() => setSettingsOpen(v => !v)}
-        settingsOpen={settingsOpen}
-      />
-
-      <div className="workspace-export-btn" title="Export Room Data">
-        <button className="toolbar-btn export-trigger" onClick={() => setShowExportMenu(v => !v)}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-            <polyline points="7 10 12 15 17 10" />
-            <line x1="12" y1="15" x2="12" y2="3" />
-          </svg>
-        </button>
-        {showExportMenu && (
-          <div className="export-dropdown">
-            <button onClick={handleExportChat} disabled={!chatHistory || chatHistory.length === 0}>
-              Export Chat (.txt)
-            </button>
-            <button onClick={handleExportStickyNotes} disabled={!stickyNotes || stickyNotes.length === 0}>
-              Export Sticky Notes (.json)
-            </button>
-            <button onClick={handleExportSummary}>
-              Export Room Summary (.json)
-            </button>
-          </div>
-        )}
-      </div>
+        <TopNav
+          roomName={roomName || currentRoomName}
+          roomDisplayId={currentRoomDisplayId}
+          roomInternalId={currentRoomId}
+          userId={userId}
+          userEmail={userEmail}
+          roomOwnerId={roomOwnerId}
+          username={username}
+          roomCreatedBy={roomCreatedBy}
+          cursorColor={cursorColor}
+          activeUserCount={activeUserCount}
+          activeRoomPanel={activeRoomPanel}
+          unreadCount={unreadCount}
+          onToggleChat={handleToggleChat}
+          onLeaveRoom={onLeaveRoom}
+          onLeaveRoomRequest={() => setShowLeaveConfirm(true)}
+          onDeleteRoom={onDeleteRoom}
+          onCopy={onCopy}
+          isLightBoard={isLightBoard}
+          onToggleMembers={() => { setShowExportMenu(false); if (chatOpen) onToggleChat(null, false); setActiveRoomPanel(prev => prev === 'members' ? null : 'members'); }}
+          pendingRequestsCount={pendingRequestsCount}
+          onToggleSettings={() => { setShowExportMenu(false); if (chatOpen) onToggleChat(null, false); setActiveRoomPanel(prev => prev === 'settings' ? null : 'settings'); }}
+        />
 
       {activityToasts.length > 0 && (
         <div className="room-activity-toast-stack">
@@ -308,8 +292,8 @@ export default function Workspace({
             ? `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='${brushWidth + 12}' height='${brushWidth + 12}'%3E%3Ccircle cx='${(brushWidth + 12) / 2}' cy='${(brushWidth + 12) / 2}' r='${brushWidth / 2 + 2}' fill='none' stroke='white' stroke-width='1.5' opacity='0.7'/%3E%3C/svg%3E") ${(brushWidth + 12) / 2} ${(brushWidth + 12) / 2}, crosshair`
             : activeTool === 'text' ? 'text'
             : activeTool === 'line' || activeTool === 'rect' || activeTool === 'circle' ? 'crosshair'
-            : activeTool === 'cursor' || activeTool === 'sticky' ? 'default'
-            : 'crosshair'
+            : activeTool === 'sticky' ? 'crosshair'
+            : 'default'
         }}
         onMouseDown={onCanvasMouseDown}
         onMouseMove={onCanvasMouseMove}
@@ -383,96 +367,107 @@ export default function Workspace({
       <div className="board-color-fixed">
         <BoardColorPicker boardColor={boardColor} onColorChange={onSetBoardColor} />
       </div>
-      <div className="zoom-controls">
-        <button onClick={onZoomIn} title="Zoom In">+</button>
-        <button onClick={onZoomOut} title="Zoom Out">−</button>
-        <button onClick={onZoomReset} title="Reset Zoom">{Math.round(viewport.scale * 100)}%</button>
+      <div className="room-bottom-right-controls">
+        <div className="zoom-controls">
+          <button onClick={onZoomIn} title="Zoom In">+</button>
+          <button onClick={onZoomOut} title="Zoom Out">−</button>
+          <button onClick={onZoomReset} title="Reset Zoom">{Math.round(viewport.scale * 100)}%</button>
+        </div>
+        <div className="bottom-export-wrapper" ref={exportMenuRef}>
+          <button
+            type="button"
+            className="bottom-export-btn"
+            onClick={() => setShowExportMenu(v => !v)}
+            aria-haspopup="menu"
+            aria-expanded={showExportMenu}
+          >
+            Download ▾
+          </button>
+          {showExportMenu && (
+            <div className="bottom-export-menu">
+              <button type="button" onClick={() => { handleExportSummary(); setShowExportMenu(false); }}>
+                Download Room Summary
+              </button>
+              <button type="button" onClick={() => { handleExportStickyNotes(); setShowExportMenu(false); }}>
+                Download Sticky Notes Summary
+              </button>
+              <button type="button" onClick={() => { handleExportChat(); setShowExportMenu(false); }}>
+                Download Chat Summary
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      <FloatingToolbar
-        activeTool={activeTool}
-        brushColor={brushColor}
-        brushWidth={brushWidth}
-        canvasRef={canvasRef}
-        onSetTool={onSetActiveTool}
-        onSetBrushColor={onSetBrushColor}
-        onSetBrushWidth={onSetBrushWidth}
-        onClearCanvas={onClearCanvas}
-        onClearBoard={onClearBoard}
-        onSendReaction={onSendReaction}
-        onUndo={onUndo}
-        allowDrawing={roomAllowDrawing}
-        allowStickyNotes={roomAllowStickyNotes}
-      />
+        <FloatingToolbar
+          activeTool={activeTool}
+          brushColor={brushColor}
+          brushWidth={brushWidth}
+          canvasRef={canvasRef}
+          onSetTool={onSetActiveTool}
+          onSetBrushColor={onSetBrushColor}
+          onSetBrushWidth={onSetBrushWidth}
+          onClearCanvas={onClearCanvas}
+          onClearBoard={onClearBoard}
+          onSendReaction={onSendReaction}
+          onUndo={onUndo}
+          allowDrawing={effectiveAllowDrawing}
+          allowStickyNotes={effectiveAllowStickyNotes}
+        />
 
       <ChatDrawer
         open={chatOpen}
         remoteCursors={remoteCursors}
+        activeUserCount={activeUserCount}
         username={username}
         userId={userId}
         chatHistory={chatHistory}
         chatInput={chatInput}
         onChatInput={onSetChatInput}
         onSendChat={onSendChat}
-        onClose={() => onToggleChat(null, false)}
+        onClose={() => handleToggleChat(null, false)}
         roomId={currentRoomId}
         isLightBoard={isLightBoard}
         replyingTo={replyingTo}
         onSetReplyTarget={onSetReplyTarget}
         onCancelReply={onCancelReply}
-        allowChat={roomAllowChat}
-        allowFiles={roomAllowFiles}
+        allowChat={effectiveAllowChat}
+        allowFiles={effectiveAllowFiles}
       />
 
-      {membersOpen && (
+      {activeRoomPanel === 'members' && (
         <RoomMembersPanel
           roomDisplayId={currentRoomDisplayId}
           userId={userId}
           userEmail={userEmail}
           username={username}
           cursorColor={cursorColor}
-          remoteCursors={remoteCursors}
-          onClose={() => setMembersOpen(false)}
+          onClose={() => setActiveRoomPanel(null)}
+          activeUserCount={activeUserCount}
         />
       )}
 
-      {activityOpen && (
-        <ActivityPanel
-          roomDisplayId={currentRoomDisplayId}
-          onClose={() => setActivityOpen(false)}
-        />
+      {activeRoomPanel === 'settings' && (
+        <div className="settings-modal-backdrop" onClick={() => setActiveRoomPanel(null)}>
+          <div className="settings-modal" onClick={e => e.stopPropagation()}>
+            <RoomSettingsPanel
+              roomDisplayId={currentRoomDisplayId}
+              roomInternalId={currentRoomId}
+              roomName={roomName || currentRoomName}
+              userId={userId}
+              isOwner={isOwner}
+              isLightBoard={isLightBoard}
+              onClose={() => setActiveRoomPanel(null)}
+              onDeleteRoom={onDeleteRoom}
+              onCopy={onCopy}
+              onRoomNameChange={handleRoomNameChange}
+            />
+          </div>
+        </div>
       )}
 
-      {settingsOpen && isOwner && (
-        <RoomSettingsPanel
-          roomDisplayId={currentRoomDisplayId}
-          roomInternalId={currentRoomId}
-          roomName={roomName || currentRoomName}
-          userId={userId}
-          isOwner={isOwner}
-          isLightBoard={isLightBoard}
-          onClose={() => setSettingsOpen(false)}
-          onDeleteRoom={onDeleteRoom}
-          onCopy={onCopy}
-          onRoomNameChange={handleRoomNameChange}
-        />
-      )}
-
-      <div style={{ display: hideLocalCursor ? 'none' : undefined }}>
-        <CursorTrail color={cursorColor} />
-      </div>
-
-      <div style={{
-        display: hideLocalCursor ? 'none' : undefined,
-        position: 'fixed', left: myPos.x, top: myPos.y, pointerEvents: 'none',
-        transform: 'translate(-2px, -2px)', zIndex: 100
-      }}>
-        <svg width="22" height="22" viewBox="0 0 20 20">
-          <path d="M0 0 L0 14 L4 10 L8 18 L10 17 L6 9 L11 9 Z" fill={cursorColor} stroke="#000" strokeWidth="1.5" />
-        </svg>
-      </div>
-
-      <RemoteCursorOverlay remoteCursors={remoteCursors} viewport={viewport} />
+      <CursorTrail color={cursorColor} />
+      <RemoteCursorOverlay remoteCursors={remoteCursors} viewport={viewport} userId={userId} />
 
       {showLeaveConfirm && (
         <ConfirmationModal
