@@ -5998,3 +5998,223 @@ body {
   }
 }
 
+/* ── Navigation Guard Modal (Browser Back popup) ────────── */
+.navigation-guard-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 23, 42, 0.42);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.navigation-guard-modal {
+  width: min(430px, calc(100vw - 32px));
+  border-radius: 24px;
+  padding: 24px;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.86)),
+    rgba(15, 23, 42, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 28px 90px rgba(15, 23, 42, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  color: #f8fafc;
+  animation: fadeInUp 0.25s ease-out;
+}
+
+.navigation-guard-modal h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #ffffff;
+}
+
+.navigation-guard-modal p {
+  margin-top: 12px;
+  color: #cbd5e1;
+  line-height: 1.55;
+  font-weight: 650;
+}
+
+.navigation-guard-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.navigation-guard-secondary {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #e2e8f0;
+  border-radius: 14px;
+  padding: 11px 16px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.navigation-guard-secondary:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.navigation-guard-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.navigation-guard-danger {
+  border: 1px solid rgba(251, 113, 133, 0.42);
+  background: linear-gradient(135deg, #ef4444, #be123c);
+  color: #ffffff;
+  border-radius: 14px;
+  padding: 11px 16px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 14px 34px rgba(190, 18, 60, 0.34);
+  transition: all 0.2s ease;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.navigation-guard-danger:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.navigation-guard-danger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.navigation-guard-primary {
+  border: 1px solid rgba(96, 165, 250, 0.42);
+  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  color: #ffffff;
+  border-radius: 14px;
+  padding: 11px 16px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.navigation-guard-primary:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.navigation-guard-primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Room Access Modal (Forward / rejoin) ────────── */
+.room-access-room-id {
+  margin-top: 14px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: #94a3b8;
+  font-size: 14px;
+  text-align: center;
+}
+
+.room-access-room-id strong {
+  color: #f1f5f9;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.room-access-form {
+  margin-top: 16px;
+}
+
+.room-access-pw-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.room-access-pw-wrap input {
+  width: 100%;
+  padding: 12px 14px;
+  padding-right: 60px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #f1f5f9;
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s ease;
+  box-sizing: border-box;
+}
+
+.room-access-pw-wrap input:focus {
+  border-color: rgba(96, 165, 250, 0.6);
+}
+
+.room-access-pw-wrap input::placeholder {
+  color: #64748b;
+}
+
+.room-access-pw-wrap input:disabled {
+  opacity: 0.6;
+}
+
+.room-access-pw-toggle {
+  position: absolute;
+  right: 6px;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 8px 10px;
+  border-radius: 8px;
+  transition: color 0.15s ease;
+}
+
+.room-access-pw-toggle:hover {
+  color: #e2e8f0;
+}
+
+.room-access-error {
+  margin-top: 10px;
+  color: #fca5a5;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* Responsive nav guard modals */
+@media (max-width: 500px) {
+  .navigation-guard-modal {
+    padding: 20px;
+  }
+  .navigation-guard-actions {
+    flex-direction: column;
+  }
+  .navigation-guard-secondary,
+  .navigation-guard-danger,
+  .navigation-guard-primary {
+    width: 100%;
+    text-align: center;
+  }
+}
+

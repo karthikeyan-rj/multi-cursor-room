@@ -40,6 +40,18 @@ async function getRoom(req, res) {
   const ownerId = String(room.ownerId);
   const isOwner = ownerId === currentUserId;
 
+  console.log('REST_GETROOM_ACCESS_CHECK', {
+    currentUserId,
+    ownerId,
+    isOwner,
+    roomId: room.roomId,
+    roomInternalId: room.id,
+    participantCount: room.participants?.length || 0,
+    userInParticipants: room.participants?.some(p => String(p.userId) === currentUserId),
+    hasReqUser: !!req.user,
+    reqUserKeys: Object.keys(req.user || {})
+  });
+
   if (isOwner) {
     // Owner always has access
   } else {
@@ -361,6 +373,15 @@ async function updateSettings(req, res) {
   await db.updateRoomSettings(room.id, updates);
 
   const io = req.app.get('io');
+
+  const mergedSettings = {
+    allowChat: updates.allowChat !== undefined ? updates.allowChat : room.allowChat,
+    allowFiles: updates.allowFiles !== undefined ? updates.allowFiles : room.allowFiles,
+    allowDrawing: updates.allowDrawing !== undefined ? updates.allowDrawing : room.allowDrawing,
+    allowStickyNotes: updates.allowStickyNotes !== undefined ? updates.allowStickyNotes : room.allowStickyNotes
+  };
+  io.to(room.id).emit('room-settings-updated', mergedSettings);
+
   emitActivity(io, room.id, 'settings', req.user.username, `${req.user.username} updated room settings`);
 
   emitRoomMembers(io, room.id);

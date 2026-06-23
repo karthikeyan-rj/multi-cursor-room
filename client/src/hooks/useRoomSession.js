@@ -10,18 +10,41 @@ function generateStrokeId() {
   return 's-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8);
 }
 
+const getRoomSessionKey = (roomId) => `room-session:${roomId}`;
+
+export const authorizeRoomSession = (roomId) => {
+  if (roomId) sessionStorage.setItem(getRoomSessionKey(roomId), 'authorized');
+};
+
+export const clearRoomSession = (roomId) => {
+  if (roomId) sessionStorage.removeItem(getRoomSessionKey(roomId));
+};
+
+export const clearAllRoomSessions = () => {
+  const keys = Object.keys(sessionStorage);
+  keys.forEach(key => {
+    if (key.startsWith('room-session:')) sessionStorage.removeItem(key);
+  });
+};
+
+export const hasRoomSession = (roomId) => {
+  return roomId && sessionStorage.getItem(getRoomSessionKey(roomId)) === 'authorized';
+};
+
+const socketAuth = { token: localStorage.getItem('cursor_room_token') };
+
 export const socket = io(SERVER_URL, {
-  auth: (cb) => cb({ token: localStorage.getItem('cursor_room_token') }),
+  auth: socketAuth,
   transports: ['websocket', 'polling'],
   withCredentials: true
 });
 
 export function reconnectSocket() {
+  socketAuth.token = localStorage.getItem('cursor_room_token');
   if (socket.connected) {
-    socket.disconnect().connect();
-  } else {
-    socket.connect();
+    socket.disconnect();
   }
+  socket.connect();
 }
 
 export function useRoomSession({ userId, username, cursorColor, activeTool, brushColor, brushWidth, chatOpen, setActiveTool }) {
@@ -84,6 +107,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   };
 
   const leaveRoom = () => {
+    clearRoomSession(currentRoomDisplayId);
     socket.emit('leave_room');
     setCurrentRoomId(null);
     setCurrentRoomName('');
@@ -129,6 +153,13 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
     socket.on('user_joined', (user) => {
       if (user.id === socket.id) return;
       setRemoteCursors(prev => ({ ...prev, [user.id]: user }));
+    });
+
+    socket.on('room-settings-updated', ({ allowChat, allowFiles, allowDrawing, allowStickyNotes }) => {
+      if (allowChat !== undefined) setRoomAllowChat(allowChat);
+      if (allowFiles !== undefined) setRoomAllowFiles(allowFiles);
+      if (allowDrawing !== undefined) setRoomAllowDrawing(allowDrawing);
+      if (allowStickyNotes !== undefined) setRoomAllowStickyNotes(allowStickyNotes);
     });
 
     socket.on('room-members-updated', (payload) => {
@@ -322,8 +353,33 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
 
     localStorage.setItem('cursor_room_userId', userId);
 
+    const joinToken = localStorage.getItem('cursor_room_token');
+    console.log('JOIN_ROOM_DEBUG', {
+      hasToken: !!joinToken,
+      tokenLength: joinToken ? joinToken.length : 0,
+      userId,
+      username,
+      roomId: currentRoomId,
+      socketConnected: socket.connected,
+      socketAuthUserId: socket.auth?.token ? 'present' : 'absent'
+    });
+
+    if (!joinToken) {
+      showToast('Authentication required. Please log in again.', 'error');
+      leaveRoom();
+      navigate('/login');
+      return;
+    }
+
+    if (!userId) {
+      showToast('User ID missing. Please log in again.', 'error');
+      leaveRoom();
+      navigate('/login');
+      return;
+    }
+
     socket.emit('join_room', {
-      roomId: currentRoomId, name: username, color: cursorColor, token: localStorage.getItem('cursor_room_token')
+      roomId: currentRoomId, name: username, color: cursorColor, token: joinToken
     });
 
     return () => {
@@ -685,7 +741,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
   }, [currentRoomId]);
 
   return {
-    socket, currentRoomId, currentRoomName, currentRoomDisplayId, roomCreatedBy, roomOwnerId,
+    socket, currentRoomId, currentRoomName, currentRoomDisplayId, roomCreatedBy, roomOwnerId, authorizeRoomSession,
     remoteCursors, activeUserCount, drawings, stickyNotes, chatHistory, reactions,
     unreadCount, setUnreadCount, myPos, isDrawing, currentStroke, draggedNote,
     canvasRef, chatOpenRef, chatInput, setChatInput, currentShape,

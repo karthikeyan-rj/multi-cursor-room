@@ -234,7 +234,7 @@ async function createRoom(id, roomName, passwordHash, ownerId, ownerEmail, owner
     createdAt: now,
     created_at: now,
     participants: [
-      { userId: ownerIdStr, email: ownerEmail, username: ownerName, joinedAt: now }
+      { userId: ownerIdStr, email: ownerEmail, username: ownerName, role: 'owner', joinedAt: now }
     ]
   };
   await db.collection('rooms').insertOne(roomDoc);

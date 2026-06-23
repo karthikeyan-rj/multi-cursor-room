@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { showToast } from '../utils/toast';
-import { socket } from './useRoomSession';
+import { socket, authorizeRoomSession } from './useRoomSession';
 import { SERVER_URL } from '../config';
 
 export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
@@ -54,6 +54,20 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
     };
   }, []);
 
+  const normalizeRoom = (rawRoom) => {
+    if (!rawRoom) return null;
+    const publicRoomId = rawRoom.roomId || rawRoom.publicRoomId;
+    const mongoId = rawRoom._id || rawRoom.id;
+    return {
+      ...rawRoom,
+      id: mongoId || publicRoomId,
+      _id: rawRoom._id || mongoId,
+      roomId: publicRoomId,
+      ownerId: rawRoom.ownerId || rawRoom.createdBy,
+      participants: rawRoom.participants || rawRoom.members || []
+    };
+  };
+
   const handleCreateRoom = async (name, password) => {
     try {
       const token = localStorage.getItem('cursor_room_token');
@@ -64,8 +78,20 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
       });
       const data = await response.json();
       if (data.success) {
-        setCreatedRoomDetails({ id: data.room.id, name: data.room.name, roomId: data.room.roomId });
-        return { id: data.room.id, roomId: data.room.roomId };
+        const createdRoom = normalizeRoom(data.room || data.data?.room || data.data || data);
+        if (!createdRoom?.roomId) {
+          showToast('Room created but missing public room ID.', 'error');
+          return;
+        }
+        console.log('CREATE_ROOM_DEBUG', {
+          roomId: createdRoom.roomId,
+          id: createdRoom.id,
+          ownerId: createdRoom.ownerId,
+          name: createdRoom.name
+        });
+        authorizeRoomSession(createdRoom.roomId);
+        setCreatedRoomDetails({ id: createdRoom.id, name: createdRoom.name, roomId: createdRoom.roomId });
+        return { id: createdRoom.id, roomId: createdRoom.roomId };
       } else {
         showToast(data.error || 'Failed to create room.', 'error');
       }
@@ -90,7 +116,9 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
         return true;
       }
       if (data.success) {
-        onJoinRoom(data.room.id, data.room.name, data.room.roomId, data.room.createdBy);
+        const joinedRoom = normalizeRoom(data.room);
+        authorizeRoomSession(joinedRoom.roomId);
+        onJoinRoom(joinedRoom.id, joinedRoom.name, joinedRoom.roomId, joinedRoom.createdBy);
         return true;
       } else {
         setJoinError(data.error || 'Failed to join room.');
@@ -118,8 +146,10 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
         setPromptRoom(null);
         showToast(data.message || 'Access request sent to room owner.', 'success');
       } else if (data.success) {
+        const joinedRoom = normalizeRoom(data.room);
+        authorizeRoomSession(joinedRoom.roomId);
         setPromptRoom(null);
-        onJoinRoom(data.room.id, data.room.name, data.room.roomId, data.room.createdBy);
+        onJoinRoom(joinedRoom.id, joinedRoom.name, joinedRoom.roomId, joinedRoom.createdBy);
       } else {
         setPromptError(data.error || 'Failed to join room.');
       }

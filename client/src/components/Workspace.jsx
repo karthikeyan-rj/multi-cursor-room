@@ -12,6 +12,7 @@ import CursorTrail from './CursorTrail';
 
 import BoardColorPicker from './BoardColorPicker';
 import ConfirmationModal from './ConfirmationModal';
+import NavigationGuardModal from './NavigationGuardModal';
 import { getLuminance } from '../utils/color';
 import { SERVER_URL } from '../config';
 
@@ -53,6 +54,7 @@ export default function Workspace({
     };
   }, [showExportMenu]);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showNavGuard, setShowNavGuard] = useState(false);
   const [activeRoomPanel, setActiveRoomPanel] = useState(null);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const [activityToasts, setActivityToasts] = useState([]);
@@ -138,6 +140,46 @@ export default function Workspace({
     setShowLeaveConfirm(false);
     onLeaveRoom();
   };
+
+  const handleNavGuardLeave = () => {
+    setShowNavGuard(false);
+    popstateGuardRef.current = false;
+    onLeaveRoom();
+  };
+
+  const handleNavGuardCancel = () => {
+    setShowNavGuard(false);
+    popstateGuardRef.current = true;
+  };
+
+  // Intercept browser Back button via popstate + history.pushState
+  const popstateGuardRef = useRef(true);
+  const popstateHandlingRef = useRef(false);
+
+  useEffect(() => {
+    if (!currentRoomDisplayId) return;
+
+    popstateGuardRef.current = true;
+    popstateHandlingRef.current = false;
+    window.history.pushState({ guard: true }, '');
+
+    const handlePopState = () => {
+      if (!popstateGuardRef.current) return;
+      if (popstateHandlingRef.current) return;
+      popstateHandlingRef.current = true;
+
+      window.history.pushState({ guard: true }, '');
+      setShowNavGuard(true);
+
+      setTimeout(() => { popstateHandlingRef.current = false; }, 300);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [currentRoomDisplayId]);
 
   const handleTextKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -476,6 +518,18 @@ export default function Workspace({
           onConfirm={handleLeaveRoom}
           onCancel={() => setShowLeaveConfirm(false)}
           isLightBoard={isLightBoard}
+        />
+      )}
+
+      {showNavGuard && (
+        <NavigationGuardModal
+          title="Leave Room?"
+          message="You are currently inside this room. Going back will leave the room and disconnect you from the live session."
+          cancelText="Stay Here"
+          confirmText="Leave Room"
+          confirmDanger
+          onCancel={handleNavGuardCancel}
+          onConfirm={handleNavGuardLeave}
         />
       )}
 

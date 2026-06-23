@@ -32,7 +32,7 @@ async function signup(req, res) {
   res.status(201).json({
     success: true,
     token,
-    user: { userId: user.id, username: user.username, email: user.email, color: user.color }
+    user: { id: user.id, userId: user.id, _id: user.id, username: user.username, email: user.email, color: user.color }
   });
 }
 
@@ -57,7 +57,7 @@ async function login(req, res) {
   res.json({
     success: true,
     token,
-    user: { userId: user.id, username: user.username, email: user.email, color: user.color }
+    user: { id: user.id, userId: user.id, _id: user.id, username: user.username, email: user.email, color: user.color }
   });
 }
 
@@ -68,7 +68,7 @@ async function getMe(req, res) {
   }
   res.json({
     success: true,
-    user: { userId: user.id, username: user.username, email: user.email, color: user.color }
+    user: { id: user.id, userId: user.id, _id: user.id, username: user.username, email: user.email, color: user.color }
   });
 }
 
@@ -83,7 +83,7 @@ async function updateColor(req, res) {
   }
   res.json({
     success: true,
-    user: { userId: user.id, username: user.username, email: user.email, color: user.color }
+    user: { id: user.id, userId: user.id, _id: user.id, username: user.username, email: user.email, color: user.color }
   });
 }
 
@@ -125,7 +125,7 @@ async function updateProfile(req, res) {
   }
   res.json({
     success: true,
-    user: { userId: user.id, username: user.username, email: user.email, color: user.color }
+    user: { id: user.id, userId: user.id, _id: user.id, username: user.username, email: user.email, color: user.color }
   });
 }
 

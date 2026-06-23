@@ -41,7 +41,21 @@ function registerRoomHandlers(io, socket) {
       const currentUserId = String(userId);
       const isOwner = String(room.ownerId) === currentUserId;
 
-      if (room.passwordHash && !isOwner) {
+      console.log('SOCKET_ACCESS_CHECK', {
+        userId,
+        currentUserId,
+        roomOwnerId: room.ownerId,
+        isOwner,
+        hasPassword: !!room.passwordHash,
+        participantCount: room.participants?.length || 0,
+        hasSocketUser: !!socket.user,
+        socketUserId: socket.user?.userId,
+        roomId
+      });
+
+      if (isOwner) {
+        // Owner always has access — skip password, kicked, and participant checks
+      } else if (room.passwordHash) {
         const isParticipant = room.participants && room.participants.some(p => String(p.userId) === currentUserId);
 
         if (!isParticipant) {

@@ -5,13 +5,14 @@ import { reconnectSocket } from './useRoomSession';
 
 const normalizeUser = (rawUser) => {
   if (!rawUser) return null;
-  const id = rawUser.id || rawUser._id || rawUser.userId;
+  const id = rawUser.id || rawUser._id || rawUser.userId || rawUser.uid;
+  if (!id) return null;
   return {
     ...rawUser,
     id,
     _id: rawUser._id || id,
     userId: rawUser.userId || id,
-    username: rawUser.username || rawUser.name || (rawUser.email ? rawUser.email.split('@')[0] : '')
+    username: rawUser.username || rawUser.name || (rawUser.email ? rawUser.email.split('@')[0] : '') || 'User'
   };
 };
 
@@ -39,10 +40,9 @@ export function useAuth() {
 
   const applyUser = (rawUser, token) => {
     const normalized = normalizeUser(rawUser);
-    if (!normalized) return;
+    if (!normalized || !normalized.id) return;
     if (token) {
       localStorage.setItem('cursor_room_token', token);
-      reconnectSocket();
     }
     localStorage.setItem('cursor_room_user', JSON.stringify(normalized));
     localStorage.setItem('cursor_room_userId', normalized.id);
@@ -111,7 +111,12 @@ export function useAuth() {
       });
       const data = await response.json();
       if (data.success) {
+        if (!data.token || !data.user) {
+          setAuthError('Signup succeeded but auth data is incomplete');
+          return;
+        }
         applyUser(data.user, data.token);
+        reconnectSocket();
       } else {
         setAuthError(data.error || 'Signup failed');
       }
@@ -134,7 +139,12 @@ export function useAuth() {
       });
       const data = await response.json();
       if (data.success) {
+        if (!data.token || !data.user) {
+          setAuthError('Login succeeded but auth data is incomplete');
+          return;
+        }
         applyUser(data.user, data.token);
+        reconnectSocket();
       } else {
         setAuthError(data.error || 'Login failed');
       }

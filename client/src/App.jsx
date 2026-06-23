@@ -4,13 +4,14 @@ import { showToast } from './utils/toast';
 import { useTheme } from './hooks/useTheme';
 import { useAuth } from './hooks/useAuth';
 import { useRooms } from './hooks/useRooms';
-import { useRoomSession } from './hooks/useRoomSession';
+import { useRoomSession, hasRoomSession, authorizeRoomSession, clearAllRoomSessions } from './hooks/useRoomSession';
 import { ToastProvider } from './components/Toast';
 import { SERVER_URL } from './config';
 import AuthScreen from './components/AuthScreen';
 import LobbyScreen from './components/LobbyScreen';
 import ProfilePage from './components/ProfilePage';
 import Workspace from './components/Workspace';
+import RoomAccessModal from './components/RoomAccessModal';
 import Starfield from './components/Starfield';
 import LandingPage from './components/LandingPage';
 
@@ -123,6 +124,7 @@ function AppContent() {
 
   const handleLogout = () => {
     auth.handleLogout(() => {
+      clearAllRoomSessions();
       session.leaveRoom();
       navigate('/', { replace: true });
     });
@@ -330,11 +332,27 @@ function RoomRouteWrapper({
   const { roomId } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+  const [needsAuth, setNeedsAuth] = useState(false);
+  const [rejoinError, setRejoinError] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
   const fetchAttemptRef = useRef(null);
 
   useEffect(() => {
     if (fetchAttemptRef.current === roomId) return;
     fetchAttemptRef.current = roomId;
+
+    if (!roomId || !auth.currentUser) return;
+
+    if (session.currentRoomDisplayId === roomId) {
+      setLoading(false);
+      return;
+    }
+
+    if (!hasRoomSession(roomId)) {
+      setNeedsAuth(true);
+      setLoading(false);
+      return;
+    }
 
     const fetchRoom = async () => {
       setLoading(true);
@@ -358,14 +376,44 @@ function RoomRouteWrapper({
       }
     };
 
-    if (roomId && auth.currentUser) {
-      if (session.currentRoomDisplayId === roomId) {
-        setLoading(false);
-      } else {
-        fetchRoom();
-      }
-    }
+    fetchRoom();
   }, [roomId, auth.currentUser, navigate, session]);
+
+  const handleRejoinRoom = useCallback(async (password) => {
+    const token = localStorage.getItem('cursor_room_token');
+    setRejoinError('');
+    setIsJoining(true);
+    try {
+      const res = await fetch(`${SERVER_URL}/api/rooms/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ roomId, password })
+      });
+      const data = await res.json();
+      if (data.requiresApproval) {
+        showToast(data.message || 'Access request sent to room owner.', 'success');
+        setNeedsAuth(false);
+        navigate('/dashboard', { replace: true });
+        return;
+      }
+      if (data.success) {
+        authorizeRoomSession(roomId);
+        session.joinRoom(data.room.id, data.room.name, data.room.roomId, data.room.createdBy, data.room.boardColor);
+        setNeedsAuth(false);
+      } else {
+        setRejoinError(data.error || 'Incorrect password or you do not have permission to enter this room.');
+      }
+    } catch (err) {
+      setRejoinError('Cannot reach server. Please try again.');
+    } finally {
+      setIsJoining(false);
+    }
+  }, [roomId, session, navigate]);
+
+  const handleCancelRejoin = () => {
+    setNeedsAuth(false);
+    navigate('/dashboard', { replace: true });
+  };
 
   const handleWorkspaceDeleteRoom = useCallback(async (roomId) => {
     try {
@@ -378,6 +426,29 @@ function RoomRouteWrapper({
       console.error('Workspace delete error:', err);
     }
   }, [handleDeleteRoom, session, navigate]);
+
+  if (needsAuth) {
+    return (
+      <div className="lobby-container" style={{ justifyContent: 'center' }}>
+        <div className="lobby-hero" style={{ animation: 'pulse 1.5s infinite ease-in-out' }}>
+          <div className="lobby-wordmark">
+            <div className="lobby-wordmark-dot" />
+            <span className="lobby-wordmark-text">Live • Real-time</span>
+          </div>
+          <h1 className="lobby-title">Multiple Cursor Room</h1>
+          <p className="lobby-subtitle">Room access required</p>
+        </div>
+        <Starfield />
+        <RoomAccessModal
+          roomId={roomId}
+          onConfirm={handleRejoinRoom}
+          onCancel={handleCancelRejoin}
+          error={rejoinError}
+          busy={isJoining}
+        />
+      </div>
+    );
+  }
 
   if (loading) {
     return (
