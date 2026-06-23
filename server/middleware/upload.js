@@ -5,7 +5,8 @@ const storage = multer.memoryStorage();
 const ALLOWED_MIMES = [
   'image/jpeg', 'image/png', 'image/webp', 'image/gif',
   'text/plain', 'text/markdown', 'text/csv',
-  'application/json', 'application/pdf'
+  'application/json', 'application/pdf',
+  'audio/webm', 'audio/mp3', 'audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp4'
 ];
 
 function fileFilter(req, file, cb) {

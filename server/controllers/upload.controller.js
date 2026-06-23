@@ -129,4 +129,78 @@ async function getFiles(req, res) {
   res.json({ success: true, files });
 }
 
-module.exports = { uploadFile, getFiles };
+async function uploadVoice(req, res) {
+  upload.single('file')(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ success: false, error: 'Voice message too large. Maximum size is 10MB.' });
+      }
+      return res.status(400).json({ success: false, error: err.message });
+    }
+
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, error: 'No audio file provided.' });
+      }
+
+      const { roomId } = req.params;
+      const { duration } = req.body;
+      const username = req.user.username;
+
+      const room = await db.getRoomById(roomId);
+      if (!room) {
+        return res.status(404).json({ success: false, error: 'Room not found.' });
+      }
+
+      const isMember = room.ownerId === req.user.userId ||
+        (room.participants && room.participants.some(p => p.userId === req.user.userId));
+      if (!isMember) {
+        return res.status(403).json({ success: false, error: 'You are not a member of this room.' });
+      }
+
+      const isOwner = String(room.ownerId) === String(req.user.userId);
+      const allowChat = room.allowChat !== undefined ? room.allowChat : true;
+      if (!isOwner && !allowChat) {
+        return res.status(403).json({ success: false, error: 'Chat is disabled by the room owner.' });
+      }
+
+      const isKicked = await db.isUserKicked(room.id, req.user.userId);
+      if (isKicked) {
+        return res.status(403).json({ success: false, error: 'You were removed from this room.' });
+      }
+
+      let audioUrl;
+      if (CLOUDINARY_ENABLED) {
+        try {
+          const result = await uploadBufferToCloudinary(req.file.buffer, {
+            folder: `cursor_room/${roomId}/voice`,
+            public_id: 'voice-' + Date.now() + '-' + Math.random().toString(36).substring(2, 8),
+            resource_type: 'auto'
+          });
+          audioUrl = result.secure_url;
+        } catch (cloudErr) {
+          console.error('Cloudinary voice upload failed:', cloudErr.message);
+          return res.status(500).json({ success: false, error: 'Failed to upload voice message.' });
+        }
+      } else {
+        return res.status(500).json({ success: false, error: 'Voice upload requires Cloudinary configuration.' });
+      }
+
+      const voiceMsg = await db.saveVoiceMessage(
+        roomId, username, req.user.color, req.user.userId, audioUrl, duration || 0
+      );
+
+      const io = req.app.get('io');
+      if (io) {
+        io.to(roomId).emit('room:voice-message', voiceMsg);
+      }
+
+      res.status(201).json({ success: true, message: voiceMsg });
+    } catch (error) {
+      console.error('Voice upload failed:', error.message);
+      res.status(500).json({ success: false, error: 'Failed to upload voice message.' });
+    }
+  });
+}
+
+module.exports = { uploadFile, getFiles, uploadVoice };

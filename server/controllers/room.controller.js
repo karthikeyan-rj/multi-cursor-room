@@ -40,17 +40,19 @@ async function getRoom(req, res) {
   const ownerId = String(room.ownerId);
   const isOwner = ownerId === currentUserId;
 
-  console.log('REST_GETROOM_ACCESS_CHECK', {
-    currentUserId,
-    ownerId,
-    isOwner,
-    roomId: room.roomId,
-    roomInternalId: room.id,
-    participantCount: room.participants?.length || 0,
-    userInParticipants: room.participants?.some(p => String(p.userId) === currentUserId),
-    hasReqUser: !!req.user,
-    reqUserKeys: Object.keys(req.user || {})
-  });
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('REST_GETROOM_ACCESS_CHECK', {
+      currentUserId,
+      ownerId,
+      isOwner,
+      roomId: room.roomId,
+      roomInternalId: room.id,
+      participantCount: room.participants?.length || 0,
+      userInParticipants: room.participants?.some(p => String(p.userId) === currentUserId),
+      hasReqUser: !!req.user,
+      reqUserKeys: Object.keys(req.user || {})
+    });
+  }
 
   if (isOwner) {
     // Owner always has access

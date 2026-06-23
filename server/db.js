@@ -432,6 +432,19 @@ async function saveChatMessage(roomId, senderName, senderColor, message, senderI
   return { ...doc, id: result.insertedId.toString() };
 }
 
+async function saveVoiceMessage(roomId, senderName, senderColor, senderId, audioUrl, duration) {
+  requireRoomId(roomId, 'VoiceMessage');
+  const doc = {
+    room_id: roomId, type: 'voice',
+    sender_name: senderName, sender_color: senderColor,
+    sender_id: senderId,
+    audioUrl, fileUrl: audioUrl, duration,
+    created_at: new Date()
+  };
+  const result = await db.collection('chat_messages').insertOne(doc);
+  return { ...doc, id: result.insertedId.toString() };
+}
+
 // ── File Message Operations ────────────────────────────────────────────────
 
 async function getFileMessages(roomId) {
@@ -746,6 +759,7 @@ module.exports = {
   deleteStickyNote,
   getChatMessages,
   saveChatMessage,
+  saveVoiceMessage,
   getFileMessages,
   saveFileMessage,
   deleteFileMessagesByRoom,

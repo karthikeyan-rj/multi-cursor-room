@@ -13,6 +13,7 @@ import CursorTrail from './CursorTrail';
 import BoardColorPicker from './BoardColorPicker';
 import ConfirmationModal from './ConfirmationModal';
 import NavigationGuardModal from './NavigationGuardModal';
+import VoiceCallPanel from './VoiceCallPanel';
 import { getLuminance } from '../utils/color';
 import { SERVER_URL } from '../config';
 
@@ -56,6 +57,7 @@ export default function Workspace({
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showNavGuard, setShowNavGuard] = useState(false);
   const [activeRoomPanel, setActiveRoomPanel] = useState(null);
+  const [showVoiceCall, setShowVoiceCall] = useState(false);
   const [pendingRequestsCount, setPendingRequestsCount] = useState(0);
   const [activityToasts, setActivityToasts] = useState([]);
   const [roomActivities, setRoomActivities] = useState([]);
@@ -312,6 +314,8 @@ export default function Workspace({
           onToggleMembers={() => { setShowExportMenu(false); if (chatOpen) onToggleChat(null, false); setActiveRoomPanel(prev => prev === 'members' ? null : 'members'); }}
           pendingRequestsCount={pendingRequestsCount}
           onToggleSettings={() => { setShowExportMenu(false); if (chatOpen) onToggleChat(null, false); setActiveRoomPanel(prev => prev === 'settings' ? null : 'settings'); }}
+          onToggleVoice={() => { setShowExportMenu(false); setShowVoiceCall(prev => !prev); }}
+          isVoiceActive={showVoiceCall}
         />
 
       {activityToasts.length > 0 && (
@@ -506,6 +510,10 @@ export default function Workspace({
             />
           </div>
         </div>
+      )}
+
+      {showVoiceCall && (
+        <VoiceCallPanel roomId={currentRoomId} onClose={() => setShowVoiceCall(false)} />
       )}
 
       <CursorTrail color={cursorColor} />

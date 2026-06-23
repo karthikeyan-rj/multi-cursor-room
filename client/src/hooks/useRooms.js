@@ -83,12 +83,14 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
           showToast('Room created but missing public room ID.', 'error');
           return;
         }
-        console.log('CREATE_ROOM_DEBUG', {
-          roomId: createdRoom.roomId,
-          id: createdRoom.id,
-          ownerId: createdRoom.ownerId,
-          name: createdRoom.name
-        });
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('CREATE_ROOM_DEBUG', {
+            roomId: createdRoom.roomId,
+            id: createdRoom.id,
+            ownerId: createdRoom.ownerId,
+            name: createdRoom.name
+          });
+        }
         authorizeRoomSession(createdRoom.roomId);
         setCreatedRoomDetails({ id: createdRoom.id, name: createdRoom.name, roomId: createdRoom.roomId });
         return { id: createdRoom.id, roomId: createdRoom.roomId };
@@ -179,17 +181,21 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
     if (typeof roomIdentifierOrObj === 'object' && roomIdentifierOrObj !== null) {
       roomId = getPublicRoomId(roomIdentifierOrObj);
       fallbackId = String(roomIdentifierOrObj?.id || roomIdentifierOrObj?._id || "").trim();
-      console.log("DELETE SOURCE:", "dashboard");
-      console.log("FULL ROOM OBJECT:", roomIdentifierOrObj);
-      console.log("room.roomId:", roomIdentifierOrObj?.roomId);
-      console.log("room.id:", roomIdentifierOrObj?.id);
-      console.log("room._id:", roomIdentifierOrObj?._id);
-      console.log("room.slug:", roomIdentifierOrObj?.slug);
-      console.log("room.name:", roomIdentifierOrObj?.name);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log("DELETE SOURCE:", "dashboard");
+        console.log("FULL ROOM OBJECT:", roomIdentifierOrObj);
+        console.log("room.roomId:", roomIdentifierOrObj?.roomId);
+        console.log("room.id:", roomIdentifierOrObj?.id);
+        console.log("room._id:", roomIdentifierOrObj?._id);
+        console.log("room.slug:", roomIdentifierOrObj?.slug);
+        console.log("room.name:", roomIdentifierOrObj?.name);
+      }
     } else {
       roomId = String(roomIdentifierOrObj || "").trim();
-      console.log("DELETE SOURCE:", "workspace");
-      console.log("DELETE IDENTIFIER:", roomId);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log("DELETE SOURCE:", "workspace");
+        console.log("DELETE IDENTIFIER:", roomId);
+      }
     }
 
     if (!roomId) {
@@ -200,7 +206,9 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
 
     const doDelete = async (id) => {
       const url = `${SERVER_URL}/api/rooms/${id}`;
-      console.log("DELETE URL:", url);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log("DELETE URL:", url);
+      }
       const token = localStorage.getItem('cursor_room_token');
       if (!token) {
         showToast('Authentication required.', 'error');

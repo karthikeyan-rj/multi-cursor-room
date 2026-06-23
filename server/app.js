@@ -6,6 +6,7 @@ const errorHandler = require('./middleware/errorHandler');
 const authRoutes = require('./routes/auth.routes');
 const roomRoutes = require('./routes/room.routes');
 const uploadRoutes = require('./routes/upload.routes');
+const voiceRoutes = require('./routes/voice.routes');
 const healthRoutes = require('./routes/health.routes');
 
 function createApp(corsOptions) {
@@ -18,6 +19,7 @@ function createApp(corsOptions) {
   app.use('/api/auth', authRoutes);
   app.use('/api/rooms', roomRoutes);
   app.use('/api/rooms', uploadRoutes);
+  app.use('/api/rooms', voiceRoutes);
 
   if (process.env.NODE_ENV !== 'production') {
     app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

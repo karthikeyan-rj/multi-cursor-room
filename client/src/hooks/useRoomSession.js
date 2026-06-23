@@ -296,6 +296,20 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       }
     });
 
+    socket.on('room:voice-message', (voiceMsg) => {
+      setChatHistory(prev => [...prev, voiceMsg]);
+      if (!chatOpenRef.current) {
+        setUnreadCount(prev => prev + 1);
+      }
+      if (hasLoadedInitialMessagesRef.current) {
+        const isOwnMessage = voiceMsg.sender_id === userId;
+        const soundMuted = localStorage.getItem('chat_muted') === 'true';
+        if (!isOwnMessage && !soundMuted) {
+          playMessageSound();
+        }
+      }
+    });
+
     socket.on('reaction_received', ({ emoji, x, y }) => {
       const rxId = Date.now() + Math.random();
       setReactions(prev => [...prev, { id: rxId, emoji, x, y }]);
@@ -403,6 +417,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       socket.off('sticky_deleted');
       socket.off('message_received');
       socket.off('room:file-message');
+      socket.off('room:voice-message');
       socket.off('reaction_received');
       socket.off('error_message');
       socket.off('room_deleted');
