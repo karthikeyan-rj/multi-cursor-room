@@ -21,7 +21,7 @@ export default function RemoteCursorOverlay({ remoteCursors, viewport, userId })
         top: user.y * viewport.scale + viewport.y
       }}>
         <div className="remote-cursor-pointer-wrap" style={{ color: user.color }}>
-          <svg className="remote-cursor-pointer" width="13" height="13" viewBox="0 0 20 20" fill={user.color}>
+          <svg className="remote-cursor-pointer" width="13" height="13" viewBox="0 0 20 20" fill="none" stroke={user.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M0 0 L0 14 L4 10 L8 18 L10 17 L6 9 L11 9 Z" />
           </svg>
         </div>

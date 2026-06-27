@@ -553,7 +553,7 @@ export default function Workspace({
         <VoiceCallPanel roomId={currentRoomId} onClose={() => setShowVoiceCall(false)} voiceCall={voiceCall} isLightBoard={isLightBoard} />
       )}
 
-      <CursorTrail color={cursorColor} />
+      <CursorTrail color={brushColor} />
       <RemoteCursorOverlay remoteCursors={remoteCursors} viewport={viewport} userId={userId} />
 
       {showLeaveConfirm && (

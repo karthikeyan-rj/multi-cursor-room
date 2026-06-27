@@ -388,9 +388,9 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       navigate('/dashboard');
     });
 
-    socket.on('presentation:state', ({ active, presenterUserId: presUserId, presenterName: presName, reason }) => {
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('PRESENT_STATE', { active, presUserId, presName, userId });
+    socket.on('presentation:state', ({ active, presenterUserId: presUserId, presenterName: presName, takeoverOwnerName }) => {
+      if (import.meta.env.DEV) {
+        console.log('PRESENT_STATE', { active, presUserId, presName, userId, takeoverOwnerName });
       }
       if (active) {
         const isMe = String(presUserId) === String(userId);
@@ -398,13 +398,16 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
         setIsFollowingPresentation(!isMe);
         setPresenterUserId(presUserId);
         setPresenterName(presName || 'Presenter');
+        if (takeoverOwnerName && !isMe) {
+          showToast(`${takeoverOwnerName} has taken over the presentation`, 'info');
+        }
         if (isMe && viewportRef.current) {
           const vp = viewportRef.current;
           const iw = window.innerWidth;
           const ih = window.innerHeight;
           const payload = { scale: vp.scale, x: vp.x, y: vp.y, centerBoardX: (iw / 2 - vp.x) / vp.scale, centerBoardY: (ih / 2 - vp.y) / vp.scale, containerWidth: iw, containerHeight: ih };
           socket.emit('presentation:viewport', payload);
-          if (process.env.NODE_ENV !== 'production') {
+          if (import.meta.env.DEV) {
             console.log('PRESENT_INITIAL_VIEWPORT', payload);
           }
         }
@@ -425,7 +428,6 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
 
     socket.on('presentation:overridden', () => {
       setIsPresenting(false);
-      showToast('Another user has taken over the presentation.', 'info');
     });
 
     socket.on('presentation:error', ({ message }) => {
@@ -453,7 +455,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       requestAnimationFrame(() => {
         applyingPresentationRef.current = false;
       });
-      if (process.env.NODE_ENV !== 'production') {
+      if (import.meta.env.DEV) {
         console.log('PRESENT_APPLY_VIEWPORT', { scale: s, x: newX, y: newY, centerBoardX, centerBoardY });
       }
     });
@@ -891,7 +893,7 @@ export function useRoomSession({ userId, username, cursorColor, activeTool, brus
       containerHeight: ih
     };
     socket.emit('presentation:viewport', payload);
-    if (process.env.NODE_ENV !== 'production') {
+    if (import.meta.env.DEV) {
       console.log('PRESENT_EMIT_VIEWPORT', payload);
     }
   }, []);

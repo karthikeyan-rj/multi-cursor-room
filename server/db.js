@@ -585,7 +585,7 @@ async function isUserKicked(roomId, userId) {
 
 async function addJoinRequest(roomId, userId, email, username) {
   const existing = await db.collection('rooms').findOne(
-    { _id: roomId, 'joinRequests.userId': userId }
+    { _id: roomId, joinRequests: { $elemMatch: { userId, status: 'pending' } } }
   );
   if (existing) return false;
 
@@ -653,8 +653,8 @@ async function approveJoinRequest(roomId, userId, requesterUserId) {
 
 async function rejectJoinRequest(roomId, userId, requesterUserId) {
   const result = await db.collection('rooms').updateOne(
-    { _id: roomId, 'joinRequests.userId': requesterUserId },
-    { $set: { 'joinRequests.$.status': 'rejected' } }
+    { _id: roomId },
+    { $pull: { joinRequests: { userId: requesterUserId } } }
   );
   return result.modifiedCount > 0;
 }

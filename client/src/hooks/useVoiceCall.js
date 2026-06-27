@@ -86,7 +86,7 @@ export default function useVoiceCall() {
         throw new Error('Invalid voice call token response');
       }
 
-      if (process.env.NODE_ENV !== 'production') {
+      if (import.meta.env.DEV) {
         console.log('AGORA_JOIN_DEBUG', {
           appId: appId?.slice(0, 8) + '...',
           channelName,

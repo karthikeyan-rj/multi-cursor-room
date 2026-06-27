@@ -83,7 +83,7 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
           showToast('Room created but missing public room ID.', 'error');
           return;
         }
-        if (process.env.NODE_ENV !== 'production') {
+        if (import.meta.env.DEV) {
           console.log('CREATE_ROOM_DEBUG', {
             roomId: createdRoom.roomId,
             id: createdRoom.id,
@@ -181,7 +181,7 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
     if (typeof roomIdentifierOrObj === 'object' && roomIdentifierOrObj !== null) {
       roomId = getPublicRoomId(roomIdentifierOrObj);
       fallbackId = String(roomIdentifierOrObj?.id || roomIdentifierOrObj?._id || "").trim();
-      if (process.env.NODE_ENV !== 'production') {
+      if (import.meta.env.DEV) {
         console.log("DELETE SOURCE:", "dashboard");
         console.log("FULL ROOM OBJECT:", roomIdentifierOrObj);
         console.log("room.roomId:", roomIdentifierOrObj?.roomId);
@@ -192,7 +192,7 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
       }
     } else {
       roomId = String(roomIdentifierOrObj || "").trim();
-      if (process.env.NODE_ENV !== 'production') {
+      if (import.meta.env.DEV) {
         console.log("DELETE SOURCE:", "workspace");
         console.log("DELETE IDENTIFIER:", roomId);
       }
@@ -206,7 +206,7 @@ export function useRooms({ currentUser, currentRoomId, onJoinRoom }) {
 
     const doDelete = async (id) => {
       const url = `${SERVER_URL}/api/rooms/${id}`;
-      if (process.env.NODE_ENV !== 'production') {
+      if (import.meta.env.DEV) {
         console.log("DELETE URL:", url);
       }
       const token = localStorage.getItem('cursor_room_token');

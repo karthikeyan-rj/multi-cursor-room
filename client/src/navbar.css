@@ -1,0 +1,79 @@
+/* ── Room Workspace Top Navigation ── */
+
+.top-nav {
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  right: 20px;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 24px;
+  z-index: 100;
+  background: rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+.nav-left {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.room-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.nav-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.active-users-list {
+  display: flex;
+  align-items: center;
+  margin-right: 12px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  padding: 2px 6px;
+  backdrop-filter: blur(8px);
+}
+
+.user-avatar-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--bg-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 12px;
+  color: #000;
+  margin-left: -8px;
+  cursor: pointer;
+  transition: transform 0.2s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.user-avatar-circle:hover {
+  transform: scale(1.15) translateY(-2px);
+  z-index: 10;
+}
+
+.user-avatar-more {
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text-secondary) !important;
+  border-color: var(--border-light) !important;
+}

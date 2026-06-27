@@ -17,6 +17,11 @@ export default function Starfield() {
     let mouse = { x: -9999, y: -9999 };
     let burst = null;
     let constellation = false;
+    let constellationOpacity = 0;
+    let constellationTarget = 0;
+    let constellationTimer = null;
+    let manualOverride = false;
+    const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     function resize() {
       canvas.width = window.innerWidth;
@@ -60,6 +65,20 @@ export default function Starfield() {
         }
       }
     }
+
+    function scheduleConstellation() {
+      if (prefersReduced) return;
+      if (manualOverride) return;
+      const isVisible = constellationTarget > 0;
+      const delay = isVisible
+        ? 1500 + Math.random() * 2500
+        : 3000 + Math.random() * 5000;
+      constellationTimer = setTimeout(() => {
+        constellationTarget = isVisible ? 0 : 1;
+        scheduleConstellation();
+      }, delay);
+    }
+    scheduleConstellation();
 
     function loop(time) {
       const w = canvas.width;
@@ -128,10 +147,16 @@ export default function Starfield() {
 
       ctx.globalAlpha = 1;
 
-      if (constellation) {
+      constellationOpacity += (constellationTarget - constellationOpacity) * 0.05;
+      if (constellationOpacity < 0.001) constellationOpacity = 0;
+
+      if (constellation && constellationOpacity > 0) {
+        ctx.save();
+        ctx.globalAlpha = constellationOpacity;
         for (let i = 0; i < stars.length; i++) {
           drawConstellationLines(stars[i], i, stars);
         }
+        ctx.restore();
       }
 
       if (burst) {
@@ -169,7 +194,23 @@ export default function Starfield() {
 
     function onKeyDown(e) {
       if (e.key === 'c' || e.key === 'C') {
-        constellation = !constellation;
+        if (prefersReduced) {
+          constellation = !constellation;
+          return;
+        }
+        manualOverride = !manualOverride;
+        if (constellationTimer) {
+          clearTimeout(constellationTimer);
+          constellationTimer = null;
+        }
+        if (manualOverride) {
+          constellationTarget = constellationOpacity > 0.5 ? 0 : 1;
+          constellation = constellationTarget > 0;
+        } else {
+          constellation = true;
+          constellationTarget = 0;
+          scheduleConstellation();
+        }
       }
     }
 
@@ -180,6 +221,7 @@ export default function Starfield() {
 
     return () => {
       cancelAnimationFrame(rafId);
+      if (constellationTimer) clearTimeout(constellationTimer);
       window.removeEventListener('resize', resize);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseleave', onMouseLeave);
@@ -189,12 +231,25 @@ export default function Starfield() {
   }, []);
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        position: 'fixed', inset: 0, pointerEvents: 'none',
-        zIndex: -1, display: 'block',
-      }}
-    />
+    <>
+      <canvas
+        ref={canvasRef}
+        style={{
+          position: 'fixed', inset: 0, pointerEvents: 'none',
+          zIndex: -1, display: 'block',
+        }}
+      />
+      <div style={{
+        position: 'fixed', bottom: '24px', left: '24px',
+        zIndex: 0, pointerEvents: 'none',
+        fontFamily: "'Courier New', 'Consolas', monospace",
+        fontSize: '10px', letterSpacing: '1.5px',
+        color: '#4ade80', opacity: 0.45,
+        textShadow: '0 0 6px rgba(74,222,128,0.3), 0 0 12px rgba(74,222,128,0.15)',
+        userSelect: 'none',
+      }}>
+        PRESS C TO TOGGLE CONSTELLATION MODE
+      </div>
+    </>
   );
 }

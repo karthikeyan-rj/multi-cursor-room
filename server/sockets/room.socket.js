@@ -326,11 +326,12 @@ function registerRoomHandlers(io, socket) {
     }
 
     const currentPresentation = presentationState[cr];
+    let samePresenter = false;
 
     if (currentPresentation?.active) {
       const currentPresenterId = String(currentPresentation.presenterUserId);
       const requesterId = currentUserId;
-      const samePresenter = currentPresenterId === requesterId;
+      samePresenter = currentPresenterId === requesterId;
 
       if (!samePresenter && !isRoomOwner) {
         socket.emit('presentation:error', { message: 'Someone is already presenting' });
@@ -340,7 +341,9 @@ function registerRoomHandlers(io, socket) {
       // Owner override
       if (!samePresenter && isRoomOwner) {
         const prevPresenter = currentPresentation;
-        io.to(prevPresenter.presenterSocketId).emit('presentation:overridden');
+        const ownerUserData = activeUsers[cr]?.[socket.id];
+        const ownerName = ownerUserData?.name || ownerUserData?.username || 'Owner';
+        io.to(prevPresenter.presenterSocketId).emit('presentation:overridden', { ownerName });
       }
     }
 
@@ -360,7 +363,8 @@ function registerRoomHandlers(io, socket) {
       active: true,
       presenterUserId: currentUserId,
       presenterName: presenterName,
-      isOwnerPresenter: isRoomOwner
+      isOwnerPresenter: isRoomOwner,
+      takeoverOwnerName: currentPresentation?.active && !samePresenter ? presenterName : null
     });
 
     socket.emit('presentation:started');
